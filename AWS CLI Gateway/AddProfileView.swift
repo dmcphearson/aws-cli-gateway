@@ -6,11 +6,24 @@ struct AddProfileView: View {
     @State private var selectedTab = 0
 
     var body: some View {
-        VStack(spacing: 0) {
-            Text("Add Profile")
-                .font(.headline)
-                .padding(.top, 15)
+        VStack(spacing: 16) {
+            // Header
+            HStack {
+                Image(systemName: "plus.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(.blue.gradient)
 
+                Text("Add AWS Profile")
+                    .font(.title3)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.primary)
+
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
+
+            // Tab content
             TabView(selection: $selectedTab) {
                 SSOProfileTab(onClose: onClose)
                     .tabItem {
@@ -24,10 +37,9 @@ struct AddProfileView: View {
                     }
                     .tag(1)
             }
-            .frame(height: 230)
+            .tabViewStyle(.automatic)
         }
-        .frame(width: 400)
-        .padding(.bottom, 15)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 0))
     }
 }
 
@@ -44,7 +56,7 @@ struct NativePopUpButton: NSViewRepresentable {
         let container = NSView()
 
         // Create the popup button
-        let popUpButton = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 220, height: 25), pullsDown: false)
+        let popUpButton = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 220, height: 26), pullsDown: false)
         popUpButton.target = context.coordinator
         popUpButton.action = #selector(Coordinator.selectionChanged(_:))
         popUpButton.bezelStyle = .texturedSquare
@@ -52,7 +64,7 @@ struct NativePopUpButton: NSViewRepresentable {
         popUpButton.tag = 100 // Tag to identify in the container
 
         // Create delete button (hidden initially)
-        let deleteButton = NSButton(frame: NSRect(x: 225, y: 0, width: 25, height: 25))
+        let deleteButton = NSButton(frame: NSRect(x: 225, y: 0, width: 25, height: 26))
         deleteButton.bezelStyle = .texturedSquare
         deleteButton.image = NSImage(systemSymbolName: "trash", accessibilityDescription: "Delete")
         deleteButton.isBordered = true
@@ -266,99 +278,117 @@ struct SSOProfileTab: View {
     private let regions = SSOProfile.commonRegions
 
     var body: some View {
-        Grid(alignment: .leading, horizontalSpacing: 15, verticalSpacing: 15) {
-            GridRow {
-                Text("Permission Set")
-                    .gridColumnAlignment(.trailing)
-
-                NativePopUpButton(
-                    selection: $selectedPermissionSet,
-                    options: ["-----"] + permissionSets.map { $0.displayName },
-                    onDelete: { itemToDelete in
-                        if itemToDelete != "-----" {
-                            permissionSetToDelete = itemToDelete
-                            showDeleteConfirmation = true
-                        }
-                    },
-                    onAddNew: {
-                        showAddPermissionSetSheet = true
-                    },
-                    addNewText: "Add new permission set..."
-                )
-                .frame(width: 250, height: 25)
-            }
-
-            GridRow {
-                Text("Region")
-                    .gridColumnAlignment(.trailing)
-
-                NativeDropdown(
-                    selection: $region,
-                    options: regions
-                )
-                .frame(width: 250, height: 25)
-            }
-
-            GridRow {
-                Text("Start URL")
-                    .gridColumnAlignment(.trailing)
-
-                TextField("", text: $startUrl)
-                    .textFieldStyle(.roundedBorder)
-                    .focused($focusedField, equals: .startUrl)
-                    .frame(width: 250)
-            }
-
-            GridRow {
-                Text("Account ID")
-                    .gridColumnAlignment(.trailing)
-
-                TextField("", text: $accountId)
-                    .textFieldStyle(.roundedBorder)
-                    .focused($focusedField, equals: .accountId)
-                    .frame(width: 250)
-            }
-
-            GridRow {
-                Text("Output")
-                    .gridColumnAlignment(.trailing)
-
-                NativeDropdown(
-                    selection: $output,
-                    options: Constants.AWS.outputFormats
-                )
-                .frame(width: 250, height: 25)
-            }
-
-            if let errorMessage = errorMessage {
+        VStack(spacing: 16) {
+            // Form fields in a compact grid
+            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 12) {
                 GridRow {
-                    Text("")
+                    Text("Permission Set")
+                        .gridColumnAlignment(.trailing)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 100, alignment: .trailing)
 
-                    Text(errorMessage)
-                        .foregroundColor(.red)
-                        .font(.caption)
+                    NativePopUpButton(
+                        selection: $selectedPermissionSet,
+                        options: ["-----"] + permissionSets.map { $0.displayName },
+                        onDelete: { itemToDelete in
+                            if itemToDelete != "-----" {
+                                permissionSetToDelete = itemToDelete
+                                showDeleteConfirmation = true
+                            }
+                        },
+                        onAddNew: {
+                            showAddPermissionSetSheet = true
+                        },
+                        addNewText: "Add new permission set..."
+                    )
+                    .frame(width: 300, height: 26)
+                }
+
+                GridRow {
+                    Text("Region")
+                        .gridColumnAlignment(.trailing)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 100, alignment: .trailing)
+
+                    NativeDropdown(
+                        selection: $region,
+                        options: regions
+                    )
+                    .frame(width: 300, height: 26)
+                }
+
+                GridRow {
+                    Text("Start URL")
+                        .gridColumnAlignment(.trailing)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 100, alignment: .trailing)
+
+                    TextField("https://example.awsapps.com/start", text: $startUrl)
+                        .textFieldStyle(.roundedBorder)
+                        .focused($focusedField, equals: .startUrl)
+                        .frame(width: 300)
+                }
+
+                GridRow {
+                    Text("Account ID")
+                        .gridColumnAlignment(.trailing)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 100, alignment: .trailing)
+
+                    TextField("123456789012", text: $accountId)
+                        .textFieldStyle(.roundedBorder)
+                        .focused($focusedField, equals: .accountId)
+                        .frame(width: 300)
+                }
+
+                GridRow {
+                    Text("Output")
+                        .gridColumnAlignment(.trailing)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 100, alignment: .trailing)
+
+                    NativeDropdown(
+                        selection: $output,
+                        options: Constants.AWS.outputFormats
+                    )
+                    .frame(width: 300, height: 26)
                 }
             }
+            .padding(.horizontal, 20)
 
-            GridRow {
-                Text("")
-
+            // Error message
+            if let errorMessage = errorMessage {
                 HStack {
-                    Button("Cancel") {
-                        onClose()
-                    }
-
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.red)
+                    Text(errorMessage)
+                        .foregroundStyle(.red)
+                        .font(.caption)
                     Spacer()
-
-                    Button("Save") {
-                        saveProfile()
-                    }
-                    .disabled(!isValid)
                 }
-                .frame(width: 250)
+                .padding(.horizontal, 20)
             }
+
+            Spacer()
+
+            // Action buttons
+            HStack(spacing: 12) {
+                Button("Cancel") {
+                    onClose()
+                }
+                .buttonStyle(.bordered)
+
+                Spacer()
+
+                Button("Create Profile") {
+                    saveProfile()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!isValid)
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 16)
         }
-        .padding()
         .onAppear {
             loadPermissionSets()
         }
@@ -446,79 +476,93 @@ struct IAMRoleTab: View {
     @State private var availableRoles: [Role] = []
 
     var body: some View {
-        Grid(alignment: .leading, horizontalSpacing: 15, verticalSpacing: 15) {
-            GridRow {
-                Text("Assume Role")
-                    .gridColumnAlignment(.trailing)
-
-                NativePopUpButton(
-                    selection: $selectedRole,
-                    options: ["-----"] + availableRoles.map { $0.name },
-                    onDelete: { itemToDelete in
-                        if itemToDelete != "-----" {
-                            roleToDelete = itemToDelete
-                            showDeleteConfirmation = true
-                        }
-                    },
-                    onAddNew: {
-                        showAddRoleSheet = true
-                    },
-                    addNewText: "Add new role..."
-                )
-                .frame(width: 250, height: 25)
-            }
-
-            GridRow {
-                Text("Source Profile")
-                    .gridColumnAlignment(.trailing)
-
-                NativeDropdown(
-                    selection: $sourceProfile,
-                    options: availableProfiles
-                )
-                .frame(width: 250, height: 25)
-            }
-
-            GridRow {
-                Text("Output")
-                    .gridColumnAlignment(.trailing)
-
-                NativeDropdown(
-                    selection: $output,
-                    options: Constants.AWS.outputFormats
-                )
-                .frame(width: 250, height: 25)
-            }
-
-            if let errorMessage = errorMessage {
+        VStack(spacing: 16) {
+            // Form fields in a compact grid
+            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 12) {
                 GridRow {
-                    Text("")
+                    Text("Assume Role")
+                        .gridColumnAlignment(.trailing)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 100, alignment: .trailing)
 
-                    Text(errorMessage)
-                        .foregroundColor(.red)
-                        .font(.caption)
+                    NativePopUpButton(
+                        selection: $selectedRole,
+                        options: ["-----"] + availableRoles.map { $0.name },
+                        onDelete: { itemToDelete in
+                            if itemToDelete != "-----" {
+                                roleToDelete = itemToDelete
+                                showDeleteConfirmation = true
+                            }
+                        },
+                        onAddNew: {
+                            showAddRoleSheet = true
+                        },
+                        addNewText: "Add new role..."
+                    )
+                    .frame(width: 300, height: 26)
+                }
+
+                GridRow {
+                    Text("Source Profile")
+                        .gridColumnAlignment(.trailing)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 100, alignment: .trailing)
+
+                    NativeDropdown(
+                        selection: $sourceProfile,
+                        options: availableProfiles
+                    )
+                    .frame(width: 300, height: 26)
+                }
+
+                GridRow {
+                    Text("Output")
+                        .gridColumnAlignment(.trailing)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 100, alignment: .trailing)
+
+                    NativeDropdown(
+                        selection: $output,
+                        options: Constants.AWS.outputFormats
+                    )
+                    .frame(width: 300, height: 26)
                 }
             }
+            .padding(.horizontal, 20)
 
-            GridRow {
-                Text("")
-
+            // Error message
+            if let errorMessage = errorMessage {
                 HStack {
-                    Button("Cancel") {
-                        onClose()
-                    }
-
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.red)
+                    Text(errorMessage)
+                        .foregroundStyle(.red)
+                        .font(.caption)
                     Spacer()
-
-                    Button("Save") {
-                        saveIAMProfile()
-                    }
-                    .disabled(!isValid)
                 }
-                .frame(width: 250)
+                .padding(.horizontal, 20)
             }
+
+            Spacer()
+
+            // Action buttons
+            HStack(spacing: 12) {
+                Button("Cancel") {
+                    onClose()
+                }
+                .buttonStyle(.bordered)
+
+                Spacer()
+
+                Button("Create Profile") {
+                    saveIAMProfile()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!isValid)
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 16)
         }
-        .padding()
         .onAppear {
             loadAvailableProfiles()
             loadAvailableRoles()
@@ -627,12 +671,13 @@ struct AddRoleView: View {
     }
 
     var body: some View {
-        VStack {
+        VStack(spacing: 24) {
             Text("Add New Role")
-                .font(.headline)
-                .padding()
+                .font(.title2)
+                .fontWeight(.semibold)
+                .foregroundStyle(.primary)
 
-            Form {
+            VStack(spacing: 16) {
                 TextField("Role Name", text: $roleName)
                     .textFieldStyle(.roundedBorder)
                     .focused($focusedField, equals: .roleName)
@@ -648,27 +693,36 @@ struct AddRoleView: View {
 
                 if let errorMessage = errorMessage {
                     Text(errorMessage)
-                        .foregroundColor(.red)
+                        .foregroundStyle(.red)
                         .font(.caption)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(.ultraThinMaterial, in: Capsule())
                 }
             }
-            .padding()
+            .padding(20)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
 
-            HStack {
+            HStack(spacing: 12) {
                 Button("Cancel") {
                     presentationMode.wrappedValue.dismiss()
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
 
                 Spacer()
 
                 Button("Save") {
                     saveRole()
                 }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
                 .disabled(!isValid)
             }
-            .padding()
         }
-        .frame(width: 400, height: 250)
+        .padding(24)
+        .frame(width: 450, height: 300)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
     }
 
     private var isValid: Bool {
@@ -698,12 +752,13 @@ struct AddPermissionSetView: View {
     }
 
     var body: some View {
-        VStack {
+        VStack(spacing: 24) {
             Text("Add Permission Set")
-                .font(.headline)
-                .padding()
+                .font(.title2)
+                .fontWeight(.semibold)
+                .foregroundStyle(.primary)
 
-            Form {
+            VStack(spacing: 16) {
                 TextField("Display Name", text: $displayName)
                     .textFieldStyle(.roundedBorder)
                     .focused($focusedField, equals: .displayName)
@@ -719,27 +774,36 @@ struct AddPermissionSetView: View {
 
                 if let errorMessage = errorMessage {
                     Text(errorMessage)
-                        .foregroundColor(.red)
+                        .foregroundStyle(.red)
                         .font(.caption)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(.ultraThinMaterial, in: Capsule())
                 }
             }
-            .padding()
+            .padding(20)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
 
-            HStack {
+            HStack(spacing: 12) {
                 Button("Cancel") {
                     presentationMode.wrappedValue.dismiss()
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
 
                 Spacer()
 
                 Button("Save") {
                     savePermissionSet()
                 }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
                 .disabled(!isValid)
             }
-            .padding()
         }
-        .frame(width: 400, height: 250)
+        .padding(24)
+        .frame(width: 450, height: 300)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
     }
 
     private var isValid: Bool {

@@ -1,5 +1,6 @@
 import SwiftUI
 import Cocoa
+import UserNotifications
 
 
 class HighlightableMenuItemView: NSView {
@@ -338,6 +339,13 @@ class MenuBarManager: NSObject, NSMenuDelegate {
                     }
                 }
             }
+
+            // Handle token expiration warnings
+            SessionManager.shared.onTokenExpirationWarning = { [weak self] profileName, timeUntilExpiry in
+                DispatchQueue.main.async {
+                    self?.handleTokenExpirationWarning(profileName: profileName, timeUntilExpiry: timeUntilExpiry)
+                }
+            }
         }
     }
 
@@ -390,8 +398,13 @@ class MenuBarManager: NSObject, NSMenuDelegate {
             maxProfileWidth = max(maxProfileWidth, nameWidth)
         }
 
-        // Calculate total item width with some padding
-        let totalItemWidth = maxProfileWidth + 80 // 30 for star + 25 for delete + 25 padding
+        // Calculate total item width dynamically based on whether stars are visible
+        let hasActiveSession = activeProfile != nil
+        let starWidth: CGFloat = hasActiveSession ? 30 : 0 // 25 for star + 5 spacing
+        let leftPadding: CGFloat = hasActiveSession ? 0 : 15 // Default padding when no stars
+        let deleteWidth: CGFloat = 25
+        let rightPadding: CGFloat = 25
+        let totalItemWidth = leftPadding + starWidth + maxProfileWidth + deleteWidth + rightPadding
 
         if profiles.isEmpty {
             let noProfilesItem = NSMenuItem(title: "No Profiles Available", action: nil, keyEquivalent: "")
@@ -400,29 +413,36 @@ class MenuBarManager: NSObject, NSMenuDelegate {
             for profile in profiles {
                 let itemView = HighlightableMenuItemView(frame: NSRect(x: 0, y: 0, width: totalItemWidth, height: Constants.UI.menuItemHeight))
 
-                // Create star button instead of the checkmark
-                let starButton = ProfileButton(frame: NSRect(x: 5, y: 0, width: 25, height: Constants.UI.menuItemHeight))
-                starButton.profile = profile
-                starButton.target = self
-                starButton.action = #selector(toggleProfileConnection(_:))
-                starButton.bezelStyle = .inline
-                starButton.isBordered = false
+                // Dynamic positioning based on whether stars are visible
+                let profileButtonX: CGFloat = hasActiveSession ? 35 : 15
+                let deleteButtonX: CGFloat = totalItemWidth - 30
 
-                // Set appropriate star icon based on connection state
-                if profile.name == activeProfile {
-                    starButton.image = NSImage(systemSymbolName: "star.fill", accessibilityDescription: "Connected")
-                    if let img = starButton.image {
-                        starButton.image = tintImage(img, with: .systemYellow)
-                    }
-                } else {
-                    starButton.image = NSImage(systemSymbolName: "star", accessibilityDescription: "Not Connected")
-                    if let img = starButton.image {
-                        starButton.image = tintImage(img, with: .secondaryLabelColor)
+                // Create star button - only add if there's an active session
+                var starButton: ProfileButton?
+                if hasActiveSession {
+                    starButton = ProfileButton(frame: NSRect(x: 5, y: 0, width: 25, height: Constants.UI.menuItemHeight))
+                    starButton!.profile = profile
+                    starButton!.target = self
+                    starButton!.action = #selector(toggleProfileConnection(_:))
+                    starButton!.bezelStyle = .inline
+                    starButton!.isBordered = false
+
+                    // Set appropriate star icon based on connection state
+                    if profile.name == activeProfile {
+                        starButton!.image = NSImage(systemSymbolName: "star.fill", accessibilityDescription: "Connected")
+                        if let img = starButton!.image {
+                            starButton!.image = tintImage(img, with: .systemYellow)
+                        }
+                    } else {
+                        starButton!.image = NSImage(systemSymbolName: "star", accessibilityDescription: "Switch to Profile")
+                        if let img = starButton!.image {
+                            starButton!.image = tintImage(img, with: .secondaryLabelColor)
+                        }
                     }
                 }
 
                 // Use the profile's displayName property which already handles the default case
-                let profileButton = ProfileButton(frame: NSRect(x: 40, y: 0, width: maxProfileWidth, height: Constants.UI.menuItemHeight))
+                let profileButton = ProfileButton(frame: NSRect(x: profileButtonX, y: 0, width: maxProfileWidth, height: Constants.UI.menuItemHeight))
                 profileButton.title = profile.displayName
                 profileButton.target = self
                 profileButton.action = #selector(showProfileDetails(_:))
@@ -432,8 +452,8 @@ class MenuBarManager: NSObject, NSMenuDelegate {
                 profileButton.profile = profile
                 profileButton.alignment = .left
 
-                // Position delete button relative to profile width
-                let deleteButton = ProfileButton(frame: NSRect(x: totalItemWidth - 30, y: 0, width: 25, height: Constants.UI.menuItemHeight))
+                // Position delete button relative to total width
+                let deleteButton = ProfileButton(frame: NSRect(x: deleteButtonX, y: 0, width: 25, height: Constants.UI.menuItemHeight))
                 deleteButton.image = NSImage(systemSymbolName: "trash", accessibilityDescription: "Delete")
                 deleteButton.bezelStyle = .inline
                 deleteButton.isBordered = false
@@ -441,7 +461,10 @@ class MenuBarManager: NSObject, NSMenuDelegate {
                 deleteButton.action = #selector(deleteProfile(_:))
                 deleteButton.profile = profile
 
-                itemView.addSubview(starButton)
+                // Only add star button if it exists (when there's an active session)
+                if let starButton = starButton {
+                    itemView.addSubview(starButton)
+                }
                 itemView.addSubview(profileButton)
                 itemView.addSubview(deleteButton)
 
@@ -594,20 +617,9 @@ class MenuBarManager: NSObject, NSMenuDelegate {
             // If it's already the active profile, do nothing
             return
         } else {
-            // If it's not the active profile, disconnect the current one
-            ProfileHistoryManager.shared.setConnectedProfile(profile.name)
-
-            self.activeProfile = profile.name
-
-            // Update SessionManager directly to ensure it starts monitoring
-            SessionManager.shared.startMonitoring(for: profile.name)
-
-            // Post notification so other components can update
-            NotificationCenter.default.post(
-                name: Notification.Name(Constants.Notifications.profileConnected),
-                object: nil,
-                userInfo: [Constants.NotificationKeys.profile: profile]
-            )
+            // Switch to this profile (star button only appears when there's an active session)
+            print("MenuBarManager: Switching from \(activeProfile ?? "none") to \(profile.name)")
+            connectToProfile(sender)
         }
     }
 
@@ -682,6 +694,10 @@ class MenuBarManager: NSObject, NSMenuDelegate {
                     object: nil,
                     userInfo: [Constants.NotificationKeys.profile: profile]
                 )
+
+                // Rebuild menu to show star buttons now that there's an active session
+                buildMenu()
+
             } catch {
                 showError("Login Failed", message: error.localizedDescription)
             }
@@ -884,6 +900,145 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         ProfileHistoryManager.shared.clearConnectedProfile()
 
         activeProfile = nil
+
+        // Rebuild menu to hide star buttons since there's no active session
+        buildMenu()
+    }
+
+    // MARK: - Token Expiration Handling
+
+    /// Handles token expiration warnings by showing notifications or prompts
+    private func handleTokenExpirationWarning(profileName: String, timeUntilExpiry: TimeInterval) {
+        if timeUntilExpiry <= 0 {
+            // Token has expired - show immediate notification
+            showTokenExpiredNotification(profileName: profileName)
+        } else if timeUntilExpiry <= 60 {
+            // Less than 1 minute - critical warning
+            showTokenExpiringNotification(profileName: profileName, timeUntilExpiry: timeUntilExpiry, isCritical: true)
+        } else if timeUntilExpiry <= 300 {
+            // Less than 5 minutes - warning
+            showTokenExpiringNotification(profileName: profileName, timeUntilExpiry: timeUntilExpiry, isCritical: false)
+        }
+    }
+
+    /// Shows a notification when a token has expired
+    private func showTokenExpiredNotification(profileName: String) {
+        let content = UNMutableNotificationContent()
+        content.title = "AWS CLI Gateway"
+        content.body = "Your AWS SSO session for '\(profileName)' has expired. Please refresh to continue."
+        content.sound = .default
+
+        // Add action buttons
+        let refreshAction = UNNotificationAction(
+            identifier: "refresh-action",
+            title: "Refresh Session",
+            options: [.foreground]
+        )
+
+        let ignoreAction = UNNotificationAction(
+            identifier: "ignore-action",
+            title: "Ignore",
+            options: []
+        )
+
+        let category = UNNotificationCategory(
+            identifier: "token-expired",
+            actions: [refreshAction, ignoreAction],
+            intentIdentifiers: []
+        )
+
+        UNUserNotificationCenter.current().setNotificationCategories([category])
+        content.categoryIdentifier = "token-expired"
+        content.userInfo = ["profileName": profileName]
+
+        let request = UNNotificationRequest(
+            identifier: "token-expired-\(profileName)",
+            content: content,
+            trigger: nil
+        )
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("MenuBarManager: Failed to show token expired notification: \(error)")
+            }
+        }
+    }
+
+    /// Shows a notification when a token is about to expire
+    private func showTokenExpiringNotification(profileName: String, timeUntilExpiry: TimeInterval, isCritical: Bool) {
+        let minutes = Int(timeUntilExpiry / 60)
+        let seconds = Int(timeUntilExpiry.truncatingRemainder(dividingBy: 60))
+
+        let content = UNMutableNotificationContent()
+        content.title = "AWS CLI Gateway"
+
+        if isCritical {
+            content.body = "Your AWS SSO session for '\(profileName)' expires in \(seconds) seconds!"
+            content.sound = .defaultCritical
+        } else {
+            let timeText = minutes > 0 ? "\(minutes) minute\(minutes == 1 ? "" : "s")" : "\(seconds) seconds"
+            content.body = "Your AWS SSO session for '\(profileName)' expires in \(timeText)."
+            content.sound = .default
+        }
+
+        // Add action buttons
+        let refreshAction = UNNotificationAction(
+            identifier: "refresh-action",
+            title: "Refresh Now",
+            options: [.foreground]
+        )
+
+        let remindLaterAction = UNNotificationAction(
+            identifier: "remind-later-action",
+            title: "Remind Later",
+            options: []
+        )
+
+        let category = UNNotificationCategory(
+            identifier: "token-expiring",
+            actions: [refreshAction, remindLaterAction],
+            intentIdentifiers: []
+        )
+
+        UNUserNotificationCenter.current().setNotificationCategories([category])
+        content.categoryIdentifier = "token-expiring"
+        content.userInfo = ["profileName": profileName]
+
+        let request = UNNotificationRequest(
+            identifier: "token-expiring-\(profileName)",
+            content: content,
+            trigger: nil
+        )
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("MenuBarManager: Failed to show token expiring notification: \(error)")
+            }
+        }
+    }
+
+    /// Refreshes the SSO session for the current active profile
+    func refreshCurrentSession() {
+        guard let activeProfile = self.activeProfile else {
+            Task { @MainActor in
+                showError("No Active Profile", message: "No profile is currently active.")
+            }
+            return
+        }
+
+        Task {
+            let success = await SessionManager.shared.refreshSSOSession(for: activeProfile)
+            await MainActor.run {
+                if success {
+                    // Session refreshed successfully - the SessionManager will handle UI updates
+                    print("MenuBarManager: Successfully refreshed session for \(activeProfile)")
+                } else {
+                    // Failed to refresh - show user guidance
+                    showError("Session Refresh Failed",
+                             message: "Unable to refresh your SSO session automatically. Please run 'aws sso login --profile \(activeProfile)' in Terminal or reconnect using the app menu.")
+                }
+            }
+        }
     }
 
     // MARK: - Helpers

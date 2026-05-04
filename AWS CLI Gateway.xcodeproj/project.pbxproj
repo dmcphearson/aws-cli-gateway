@@ -123,6 +123,7 @@
 		1A97FA732D765E300059C29D /* AWS CLI Gateway.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "AWS CLI Gateway.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A97FA842D765E310059C29D /* AWS CLI GatewayTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "AWS CLI GatewayTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A97FA8E2D765E310059C29D /* AWS CLI GatewayUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "AWS CLI GatewayUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		1ACB671D2E7889B1002EA9F1 /* AWS CLI GatewayRelease.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "AWS CLI GatewayRelease.entitlements"; sourceTree = "<group>"; };
 		F27D5A472D96E07500261F26 /* ManagerModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagerModels.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -179,6 +180,7 @@
 		1A96BB612D78823700C64C80 /* AWS CLI Gateway */ = {
 			isa = PBXGroup;
 			children = (
+				1ACB671D2E7889B1002EA9F1 /* AWS CLI GatewayRelease.entitlements */,
 				1A96BB4F2D78823700C64C80 /* Preview Content */,
 				1A96BB502D78823700C64C80 /* AddProfileView.swift */,
 				1A96BB512D78823700C64C80 /* AppDelegate.swift */,
@@ -609,7 +611,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.2;
-				MARKETING_VERSION = 0.4.0;
+				MARKETING_VERSION = 0.4.5;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.nyitg.AWS-CLI-Gateway";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -623,8 +625,9 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = "AWS CLI Gateway/AWS_CLI_Gateway.entitlements";
+				CODE_SIGN_ENTITLEMENTS = "AWS CLI Gateway/AWS CLI GatewayRelease.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -644,7 +647,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.2;
-				MARKETING_VERSION = 0.4.0;
+				MARKETING_VERSION = 0.4.5;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.nyitg.AWS-CLI-Gateway";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";

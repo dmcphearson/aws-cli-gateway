@@ -9,11 +9,12 @@ struct ProfilesView: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        VStack {
+        VStack(spacing: 16) {
             if isLoading {
                 ProgressView()
                     .progressViewStyle(.circular)
                     .scaleEffect(0.8)
+                    .padding()
             } else {
                 List(profiles, id: \.name) { profile in
                     ProfileRow(
@@ -26,11 +27,9 @@ struct ProfilesView: View {
                     )
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        // Now tap just selects the profile but doesn't connect
                         selectedProfile = profile
                     }
                     .contextMenu {
-                        // Context menu options remain the same
                         Button {
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString(profile.name, forType: .string)
@@ -47,30 +46,40 @@ struct ProfilesView: View {
                         }
                     }
                 }
+                .listStyle(.plain)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
                 .frame(minHeight: 200)
             }
 
             if let error = errorMessage {
                 Text(error)
-                    .foregroundColor(.red)
+                    .foregroundStyle(.red)
                     .font(.caption)
-                    .padding(.horizontal)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial, in: Capsule())
             }
 
-            HStack {
+            HStack(spacing: 12) {
                 Button("Add Profile") {
                     WindowManager.shared.showAddProfileWindow()
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
 
                 Spacer()
 
                 Button("Done") {
                     dismiss()
                 }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
             }
-            .padding()
+            .padding(.horizontal)
         }
+        .padding()
         .frame(width: 400)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
         .onAppear {
             loadProfiles()
             updateConnectedProfile()
@@ -248,45 +257,58 @@ struct ProfileRow: View {
     let isSelected: Bool
     let isConnected: Bool
     let onToggleConnection: () -> Void
-    
+
     var body: some View {
-        HStack {
-            VStack(alignment: .leading) {
-                HStack(spacing: 4) {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
                     Text(profile.name)
                         .font(.headline)
+                        .foregroundStyle(.primary)
 
                     if isConnected {
-                        Text("(Connected)")
-                            .font(.caption)
-                            .foregroundColor(.green)
+                        Text("Connected")
+                            .font(.caption2)
+                            .fontWeight(.medium)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 2)
+                            .background(.green.gradient, in: Capsule())
                     }
                 }
 
                 if let ssoProfile = profile as? SSOProfile {
                     Text("\(ssoProfile.accountId) - \(ssoProfile.roleName)")
                         .font(.caption)
-                        .foregroundColor(.gray)
+                        .foregroundStyle(.secondary)
                 } else if let iamProfile = profile as? IAMProfile {
                     Text("IAM Role - \(iamProfile.roleArn)")
                         .font(.caption)
-                        .foregroundColor(.gray)
+                        .foregroundStyle(.secondary)
                 }
             }
 
             Spacer()
 
-            // Replace checkmark with star button
             Button(action: onToggleConnection) {
                 Image(systemName: isConnected ? "star.fill" : "star")
-                    .foregroundColor(isConnected ? .yellow : .gray)
-                    .font(.system(size: 16))
+                    .foregroundStyle(isConnected ? .yellow : .secondary)
+                    .font(.system(size: 16, weight: .medium))
+                    .frame(width: 24, height: 24)
+                    .background(.ultraThinMaterial, in: Circle())
+                    .overlay(
+                        Circle()
+                            .stroke(.quaternary, lineWidth: 0.5)
+                    )
             }
             .buttonStyle(PlainButtonStyle())
         }
-        .padding(.vertical, 4)
-        .background(isConnected ? Color.green.opacity(0.1) : Color.clear)
-        .cornerRadius(4)
+        .padding(12)
+        .background(.thinMaterial.opacity(isSelected ? 1.0 : 0.0), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isSelected ? .secondary.opacity(0.3) : Color.clear, lineWidth: 1)
+        )
     }
 }
 
