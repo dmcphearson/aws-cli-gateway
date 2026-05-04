@@ -1,7 +1,7 @@
 import SwiftUI
 import UserNotifications
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Ensure AWS directory permissions are correct at startup
@@ -21,6 +21,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 print("Notification authorization granted")
             }
         }
+
+        // Set notification delegate
+        UNUserNotificationCenter.current().delegate = self
         
         ConfigManager.shared.updateIAMProfileSourceReferences()
     }
@@ -122,5 +125,34 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         alert.alertStyle = .warning
         alert.addButton(withTitle: "OK")
         alert.runModal()
+    }
+
+    // MARK: - UNUserNotificationCenterDelegate
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        let actionIdentifier = response.actionIdentifier
+
+        switch actionIdentifier {
+        case "refresh-action":
+            // User tapped refresh button
+            DispatchQueue.main.async {
+                MenuBarManager.shared.refreshCurrentSession()
+            }
+
+        case "ignore-action", "remind-later-action":
+            // User chose to ignore or be reminded later - do nothing
+            break
+
+        default:
+            // Default action (notification tapped but no button)
+            break
+        }
+
+        completionHandler()
+    }
+
+    // Allow notifications to show even when app is in foreground
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .sound])
     }
 }

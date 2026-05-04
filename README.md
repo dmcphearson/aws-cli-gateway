@@ -8,14 +8,13 @@
 
 A menu bar macOS application that simplifies the management of AWS profiles and sessions, with a focus on AWS SSO.
 
-## What's New in Version 0.4.0
+## What's New in Version 0.4.5
 
-- **Session Management Improvements**: Added the ability to clear cache for active sessions on quit
-- **New Tools & Settings Menu**: Reorganized options into a dedicated submenu for better organization
-- **Install CLI Tools**: Simplified access to terminal integration (formerly "Install Terminal Commands")
-- **AWS Console Access**: Quickly open the AWS Console for your active session directly from the menu
-- **UI Refinements**: Enhanced menu organization and visual clarity
-- **Official Signing**: App is now signed with an Apple Developer ID for seamless installation
+- **Enhanced UX**: Star buttons now only appear when there's an active session, preventing confusion at startup
+- **Improved Session Management**: Fixed token synchronization issues that caused premature expiration errors
+- **Dynamic Menu Layout**: Menu width and spacing now adjust intelligently based on current session state
+- **Better Error Handling**: Resolved infinite loop issues when refreshing expired SSO sessions
+- **Visual Polish**: Added proper spacing and padding for a more professional appearance
 
 ### [View the previous release notes](Release%20Notes.md)
 
@@ -54,7 +53,7 @@ Download the latest release from the Release Page and move the application to yo
 
 1. Clone this repository:
    ```
-   git clone https://github.com/yourusername/aws-cli-gateway.git
+   git clone https://github.com/dmcphearson/aws-cli-gateway.git
    cd aws-cli-gateway
    ```
 

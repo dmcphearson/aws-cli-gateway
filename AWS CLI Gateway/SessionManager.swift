@@ -39,6 +39,13 @@ class SessionManager {
     // Callback for UI updates
     var onSessionUpdate: ((String) -> Void)?
 
+    // Callback for token expiration warnings
+    var onTokenExpirationWarning: ((String, TimeInterval) -> Void)?
+
+    // Constants for token expiration handling
+    private let tokenExpirationWarningThreshold: TimeInterval = 5 * 60 // 5 minutes
+    private let tokenExpirationCriticalThreshold: TimeInterval = 60 // 1 minute
+
     private init() {
         // Load saved mappings from UserDefaults
         if let savedMap = UserDefaults.standard.dictionary(forKey: "profile_cache_file_map") as? [String: String] {
@@ -253,13 +260,163 @@ class SessionManager {
                 // Only update if we're still monitoring the same profile
                 await MainActor.run {
                     if !Task.isCancelled && self.isMonitoring && self.activeProfile == profileName {
-                        print("SessionManager: Failed to refresh credentials: \(error)")
+                        let errorMessage = self.parseAWSError(error)
+                        print("SessionManager: Failed to refresh credentials: \(errorMessage)")
                         self.expiryDate = nil
-                        self.onSessionUpdate?("Session: Auth failed")
+
+                        // Provide more specific feedback based on the error
+                        if errorMessage.contains("Token is expired") || errorMessage.contains("TokenExpired") {
+                            self.onSessionUpdate?("Session: Token expired")
+                            self.onTokenExpirationWarning?(profileName, 0)
+                        } else if errorMessage.contains("UnauthorizedOperation") || errorMessage.contains("InvalidUserID") {
+                            self.onSessionUpdate?("Session: Auth failed")
+                        } else {
+                            self.onSessionUpdate?("Session: Connection error")
+                        }
                     }
                 }
             }
         }
+    }
+
+    // MARK: - Error Parsing
+
+    /// Parses AWS CLI error messages to provide more meaningful feedback
+    private func parseAWSError(_ error: Error) -> String {
+        let errorString = error.localizedDescription
+
+        // Check for common AWS SSO error patterns
+        if errorString.contains("Token is expired") ||
+           errorString.contains("TokenExpired") ||
+           errorString.contains("The SSO session associated with this profile has expired") {
+            return "SSO token has expired - please refresh your session"
+        }
+
+        if errorString.contains("UnauthorizedOperation") ||
+           errorString.contains("InvalidUserID.NotFound") {
+            return "Authentication failed - profile may not have proper permissions"
+        }
+
+        if errorString.contains("ProfileNotFound") ||
+           errorString.contains("The config profile") {
+            return "Profile configuration not found"
+        }
+
+        if errorString.contains("NoCredentialsError") ||
+           errorString.contains("Unable to locate credentials") {
+            return "No valid credentials found - SSO session may need to be established"
+        }
+
+        if errorString.contains("SSOTokenLoadError") ||
+           errorString.contains("SSO Token has expired") {
+            return "SSO token expired - session refresh required"
+        }
+
+        // Return the original error if we can't parse it
+        return errorString
+    }
+
+    // MARK: - Token Expiration Checking
+
+    /// Proactively checks if the token is about to expire and handles it appropriately
+    func checkTokenExpiration(for profileName: String) async -> Bool {
+        guard let expiryDate = self.expiryDate else {
+            // No token information available
+            return false
+        }
+
+        let now = Date()
+        let timeUntilExpiry = expiryDate.timeIntervalSince(now)
+
+        if timeUntilExpiry <= 0 {
+            // Token has already expired
+            print("SessionManager: Token expired for profile \(profileName)")
+            await MainActor.run {
+                self.onSessionUpdate?("Session: Expired")
+                self.onTokenExpirationWarning?(profileName, 0)
+            }
+            return false
+        } else if timeUntilExpiry <= tokenExpirationCriticalThreshold {
+            // Token expires very soon - critical warning
+            print("SessionManager: Token expires in \(Int(timeUntilExpiry))s for profile \(profileName)")
+            await MainActor.run {
+                self.onTokenExpirationWarning?(profileName, timeUntilExpiry)
+            }
+            return false
+        } else if timeUntilExpiry <= tokenExpirationWarningThreshold {
+            // Token expires soon - warning
+            print("SessionManager: Token expires in \(Int(timeUntilExpiry/60))min for profile \(profileName)")
+            await MainActor.run {
+                self.onTokenExpirationWarning?(profileName, timeUntilExpiry)
+            }
+            return true // Still valid but warn user
+        }
+
+        return true // Token is still valid
+    }
+
+    /// Attempts to refresh the SSO session for a profile
+    func refreshSSOSession(for profileName: String) async -> Bool {
+        print("SessionManager: Attempting to refresh SSO session for profile \(profileName)")
+
+        do {
+            // Clear any cached mapping for this profile to force fresh discovery
+            profileCacheFileMap.removeValue(forKey: profileName)
+            print("SessionManager: Cleared cached mapping for profile \(profileName)")
+
+            // Try SSO login to refresh the session
+            _ = try await CommandRunner.shared.runCommand("aws", args: ["sso", "login", "--profile", profileName])
+
+            // Give it a moment for the cache files to be updated
+            try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+
+            // Force discovery of the newest cache file (don't use cached mapping)
+            if let cacheFilename = await findMatchingCacheFile(forProfile: profileName),
+               let token = try? await readCredentialsFromCacheFile(cacheFilename),
+               token.expiresAt > Date() {
+
+                // Store the new mapping for future use
+                profileCacheFileMap[profileName] = cacheFilename
+                print("SessionManager: Updated cache mapping for \(profileName) -> \(cacheFilename)")
+
+                await MainActor.run {
+                    self.expiryDate = token.expiresAt
+                    self.startSessionTimer()
+                    self.onSessionUpdate?("Session: Active")
+                }
+
+                print("SessionManager: Successfully refreshed SSO session, new expiry: \(token.expiresAt)")
+                return true
+            }
+
+            print("SessionManager: SSO login succeeded but no valid credentials found")
+            return false
+
+        } catch {
+            print("SessionManager: Failed to refresh SSO session: \(error)")
+
+            // If the SSO login failed, it might be because the session needs to be re-established
+            // This typically requires user intervention via browser
+            await MainActor.run {
+                self.onSessionUpdate?("Session: Refresh needed")
+            }
+
+            return false
+        }
+    }
+
+    // MARK: - Cache Management
+
+    /// Clears all cached file mappings to force fresh discovery
+    func clearCacheFileMappings() {
+        profileCacheFileMap.removeAll()
+        print("SessionManager: Cleared all cached file mappings")
+    }
+
+    /// Clears cache mapping for a specific profile
+    func clearCacheFileMapping(for profileName: String) {
+        profileCacheFileMap.removeValue(forKey: profileName)
+        print("SessionManager: Cleared cache mapping for profile \(profileName)")
     }
 
     // MARK: - Improved Cache File Finding
@@ -314,14 +471,23 @@ class SessionManager {
         }
 
         do {
-            // Get all JSON files in the cache directory
-            let cacheFiles = try FileManager.default.contentsOfDirectory(at: cliCachePath, includingPropertiesForKeys: nil)
+            // Get all JSON files in the cache directory with modification dates
+            let cacheFiles = try FileManager.default.contentsOfDirectory(at: cliCachePath, includingPropertiesForKeys: [.contentModificationDateKey])
                 .filter { $0.pathExtension == "json" && $0.lastPathComponent != ".DS_Store" }
 
-            print("SessionManager: Examining \(cacheFiles.count) cache files")
+            // Sort by modification date (newest first) to prioritize recently updated files
+            let sortedCacheFiles = cacheFiles.sorted { file1, file2 in
+                guard let date1 = try? file1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+                      let date2 = try? file2.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate else {
+                    return false
+                }
+                return date1 > date2
+            }
+
+            print("SessionManager: Examining \(sortedCacheFiles.count) cache files (sorted by modification date)")
 
             // For each file, try to read it and check for a strong match
-            for file in cacheFiles {
+            for file in sortedCacheFiles {
                 if let data = try? Data(contentsOf: file),
                    let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
 

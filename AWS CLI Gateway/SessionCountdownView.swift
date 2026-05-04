@@ -15,50 +15,68 @@ struct SessionCountdownView: View {
     }
 
     var body: some View {
-        HStack(spacing: 5) {
-            // Status indicator
+        HStack(spacing: 12) {
+            // Status indicator with pulsing animation
             Circle()
-                .fill(statusColor)
-                .frame(width: 8, height: 8)
-                .padding(.leading, 4)
+                .fill(statusColor.gradient)
+                .frame(width: 10, height: 10)
+                .scaleEffect(sessionStatus == .active ? 1.0 : 0.8)
+                .opacity(sessionStatus == .active ? 1.0 : 0.7)
+                .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: sessionStatus == .active)
 
             // Profile and timer
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 2) {
                 if let profileName = connectedProfile {
                     Text(profileName)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(.primary)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.primary)
                 } else {
                     Text(statusText)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(.primary)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.primary)
                 }
 
                 if sessionStatus == .active && timeRemaining > 0 {
                     Text(formatTime(timeRemaining))
-                        .font(.system(size: 9))
-                        .foregroundColor(.secondary)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .contentTransition(.numericText())
                 }
             }
 
             Spacer()
 
-            // Refresh button
+            // Refresh button with hover effects
             if sessionStatus == .expired || sessionStatus == .notAuthenticated {
                 Button(action: {
-                    renewSession()
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                        renewSession()
+                    }
                 }) {
                     Image(systemName: isRenewing ? "hourglass" : "arrow.clockwise")
-                        .font(.system(size: 10))
-                        .foregroundColor(.blue)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.blue)
+                        .frame(width: 16, height: 16)
+                        .rotationEffect(.degrees(isRenewing ? 360 : 0))
+                        .animation(.linear(duration: 1.0).repeatForever(autoreverses: false), value: isRenewing)
                 }
                 .buttonStyle(PlainButtonStyle())
                 .disabled(isRenewing)
+                .background(.ultraThinMaterial, in: Circle())
+                .overlay(
+                    Circle()
+                        .stroke(.quaternary, lineWidth: 0.5)
+                )
             }
         }
-        .frame(height: sessionStatus == .active ? 26 : 20)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 2)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.thinMaterial, in: Capsule())
+        .overlay(
+            Capsule()
+                .stroke(.quaternary, lineWidth: 0.5)
+        )
+        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: sessionStatus)
         .onAppear {
             // Get initial profile
             updateConnectedProfile()
