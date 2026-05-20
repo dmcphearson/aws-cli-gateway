@@ -615,10 +615,16 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         toolsSubmenu.addItem(installCLIItem)
 
         if activeProfile != nil {
-         let openConsoleItem = NSMenuItem(title: "Open AWS Console", action: #selector(openConsole), keyEquivalent: "")
-        openConsoleItem.target = self
-        toolsSubmenu.addItem(openConsoleItem)
+            let openConsoleItem = NSMenuItem(title: "Open AWS Console", action: #selector(openConsole), keyEquivalent: "")
+            openConsoleItem.target = self
+            toolsSubmenu.addItem(openConsoleItem)
         }
+
+        toolsSubmenu.addItem(NSMenuItem.separator())
+
+        let profileBindingsItem = NSMenuItem(title: "App Profile Bindings...", action: #selector(showAppProfileBindings), keyEquivalent: "")
+        profileBindingsItem.target = self
+        toolsSubmenu.addItem(profileBindingsItem)
 
         mainMenu.addItem(toolsItem)
 
@@ -896,6 +902,71 @@ class MenuBarManager: NSObject, NSMenuDelegate {
             alert.alertStyle = .critical
             alert.addButton(withTitle: "OK")
             alert.runModal()
+        }
+    }
+
+    @MainActor
+    @objc private func showAppProfileBindings() {
+        let bindings = AppProfileBindingManager.shared.getBindings()
+        let profiles = ConfigManager.shared.getProfiles()
+
+        let alert = NSAlert()
+        alert.messageText = "App Profile Bindings"
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Add Binding")
+        alert.addButton(withTitle: "Install Shell Script")
+        alert.addButton(withTitle: "Close")
+
+        if bindings.isEmpty {
+            alert.informativeText = "No bindings configured.\n\nBindings let you assign specific AWS profiles to commands (e.g., 'claude' → ClaudeCode) so you don't need shell wrappers or exported AWS_PROFILE."
+        } else {
+            let bindingList = bindings.map { "  \($0.command) → \($0.profileName)" }.joined(separator: "\n")
+            alert.informativeText = "Current bindings:\n\(bindingList)\n\nBindings auto-set AWS_PROFILE per command."
+        }
+
+        let response = alert.runModal()
+
+        if response == .alertFirstButtonReturn {
+            // Add binding
+            let addAlert = NSAlert()
+            addAlert.messageText = "Add App Profile Binding"
+            addAlert.informativeText = "Command name (e.g., 'claude', 'terraform'):"
+            addAlert.addButton(withTitle: "Add")
+            addAlert.addButton(withTitle: "Cancel")
+
+            let commandField = NSTextField(frame: NSRect(x: 0, y: 32, width: 250, height: 24))
+            commandField.placeholderString = "command name"
+
+            let profilePopup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 250, height: 24))
+            for profile in profiles {
+                profilePopup.addItem(withTitle: profile.name)
+            }
+
+            let accessoryView = NSView(frame: NSRect(x: 0, y: 0, width: 250, height: 60))
+            accessoryView.addSubview(commandField)
+            accessoryView.addSubview(profilePopup)
+            addAlert.accessoryView = accessoryView
+
+            if addAlert.runModal() == .alertFirstButtonReturn {
+                let command = commandField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                let profile = profilePopup.titleOfSelectedItem ?? ""
+                if !command.isEmpty && !profile.isEmpty {
+                    AppProfileBindingManager.shared.addBinding(command: command, profileName: profile)
+                }
+            }
+        } else if response == .alertSecondButtonReturn {
+            // Install shell script
+            do {
+                let scriptPath = try AppProfileBindingManager.shared.installShellIntegration()
+                let successAlert = NSAlert()
+                successAlert.messageText = "Shell Integration Installed"
+                successAlert.informativeText = "Add this to your .zshrc or .bashrc:\n\nsource \"\(scriptPath.path)\"\n\nThis replaces any manual AWS_PROFILE exports or wrapper functions for bound commands."
+                successAlert.alertStyle = .informational
+                successAlert.addButton(withTitle: "OK")
+                successAlert.runModal()
+            } catch {
+                showError("Installation Failed", message: error.localizedDescription)
+            }
         }
     }
 
