@@ -132,9 +132,27 @@ class SSOTokenManager {
         return nil
     }
 
+    /// Returns the SSO token expiry date for a given profile, or nil if not found/expired.
+    func getSSOTokenExpiry(forProfile profileName: String) -> Date? {
+        guard let tokenFilePath = findTokenFile(forProfile: profileName),
+              let tokenData = try? Data(contentsOf: tokenFilePath),
+              let tokenDict = try? JSONSerialization.jsonObject(with: tokenData) as? [String: Any],
+              let expiresAtString = tokenDict["expiresAt"] as? String else {
+            return nil
+        }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: expiresAtString) {
+            return date
+        }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: expiresAtString)
+    }
+
     // Get token info from SSO cache
     private func getTokenInfoFromSSOCache(startUrl: String, region: String) -> TokenInfo? {
-        guard let tokenFilePath = findTokenFile(startUrl: startUrl, region: region),
+        guard let tokenFilePath = findTokenFileByContent(startUrl: startUrl, region: region),
               let tokenData = try? Data(contentsOf: tokenFilePath),
               let tokenDict = try? JSONSerialization.jsonObject(with: tokenData) as? [String: Any],
               let expiresAtString = tokenDict["expiresAt"] as? String else {
@@ -146,7 +164,12 @@ class SSOTokenManager {
         dateFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
 
         guard let expiresAt = dateFormatter.date(from: expiresAtString) else {
-            return nil
+            dateFormatter.formatOptions = [.withInternetDateTime]
+            guard let fallbackDate = dateFormatter.date(from: expiresAtString) else {
+                return nil
+            }
+            let remainingTime = fallbackDate.timeIntervalSince(Date())
+            return TokenInfo(isValid: remainingTime > 0, expiresAt: fallbackDate, remainingTime: remainingTime)
         }
 
         let remainingTime = expiresAt.timeIntervalSince(Date())
@@ -271,17 +294,20 @@ class SSOTokenManager {
                 }
 
                 if let token = try? decoder.decode(SSOToken.self, from: data) {
-                    // If we know the session name, check it directly
-                    if let sessionName = ssoSessionName,
-                       (token.sessionName == sessionName || file.lastPathComponent.contains(sessionName)) {
-                        print("SSOTokenManager: Found matching SSO token by session name")
-                        return token
-                    }
-
-                    // As a fallback, try to use the most recent valid token
-                    if token.expiresAt > Date() {
-                        print("SSOTokenManager: Found valid SSO token: \(file.lastPathComponent)")
-                        return token
+                    // Match by session name (from file content or filename hash)
+                    if let sessionName = ssoSessionName {
+                        if token.sessionName == sessionName || file.deletingPathExtension().lastPathComponent == sha1Hash(sessionName) {
+                            print("SSOTokenManager: Found matching SSO token by session name: \(sessionName)")
+                            return token
+                        }
+                    } else if token.startUrl != nil && token.accessToken != nil && token.expiresAt > Date() {
+                        // Legacy mode (no sso_session): match by startUrl via profile config
+                        let profiles = ConfigManager.shared.getProfiles()
+                        if let ssoProfile = profiles.first(where: { $0.name == profileName }) as? SSOProfile,
+                           token.startUrl == ssoProfile.startUrl {
+                            print("SSOTokenManager: Found matching SSO token by startUrl for legacy profile")
+                            return token
+                        }
                     }
                 }
             } catch {
@@ -392,46 +418,92 @@ class SSOTokenManager {
         return sessionName
     }
 
-    // Finds the token file path for the given SSO session parameters
-    private func findTokenFile(startUrl: String, region: String) -> URL? {
+    /// Finds the SSO token file for a profile using botocore-compatible hash logic.
+    /// New-style config (sso_session block): sha1(sessionName)
+    /// Legacy config (no sso_session): sha1(startUrl)
+    private func findTokenFile(forProfile profileName: String) -> URL? {
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
         let cacheDirPath = homeDir.appendingPathComponent(".aws/sso/cache")
 
-        // Calculate hash - similar to how AWS CLI does it
-        let sessionKey = "\(startUrl)|\(region)"
-        let hash = sha1Hash(sessionKey)
+        let sessionName = ConfigManager.shared.getSSOSessionName(for: profileName)
+        let profiles = ConfigManager.shared.getProfiles()
+        let startUrl = (profiles.first(where: { $0.name == profileName }) as? SSOProfile)?.startUrl
 
-        // Check if file exists directly with hash name
+        // Compute hash per botocore: sha1(sessionName) if available, else sha1(startUrl)
+        let hashInput: String?
+        if let sessionName = sessionName {
+            hashInput = sessionName
+        } else if let startUrl = startUrl {
+            hashInput = startUrl
+        } else {
+            hashInput = nil
+        }
+
+        if let hashInput = hashInput {
+            let hash = sha1Hash(hashInput)
+            let potentialTokenFile = cacheDirPath.appendingPathComponent("\(hash).json")
+            if FileManager.default.fileExists(atPath: potentialTokenFile.path) {
+                return potentialTokenFile
+            }
+        }
+
+        // Fallback: content scan matching by session name or startUrl
+        guard let fileURLs = try? FileManager.default.contentsOfDirectory(at: cacheDirPath, includingPropertiesForKeys: nil) else {
+            return nil
+        }
+
+        for fileURL in fileURLs where fileURL.pathExtension == "json" {
+            guard let data = try? Data(contentsOf: fileURL),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                continue
+            }
+
+            // Match by sessionName field if we have one
+            if let sessionName = sessionName,
+               let fileSessionName = json["sessionName"] as? String,
+               fileSessionName == sessionName {
+                return fileURL
+            }
+
+            // Match by startUrl for legacy configs (must also have accessToken to be a token file)
+            if sessionName == nil,
+               let startUrl = startUrl,
+               let storedStartUrl = json["startUrl"] as? String,
+               storedStartUrl == startUrl,
+               json["accessToken"] != nil {
+                return fileURL
+            }
+        }
+
+        return nil
+    }
+
+    /// Content-based fallback for getTokenInfoFromSSOCache (used by legacy getTokenInfo API)
+    private func findTokenFileByContent(startUrl: String, region: String) -> URL? {
+        let homeDir = FileManager.default.homeDirectoryForCurrentUser
+        let cacheDirPath = homeDir.appendingPathComponent(".aws/sso/cache")
+
+        // Try hash of just startUrl first (legacy botocore behavior)
+        let hash = sha1Hash(startUrl)
         let potentialTokenFile = cacheDirPath.appendingPathComponent("\(hash).json")
         if FileManager.default.fileExists(atPath: potentialTokenFile.path) {
             return potentialTokenFile
         }
 
-        // If not found by direct hash match, look through all files
-        do {
-            let fileURLs = try FileManager.default.contentsOfDirectory(
-                at: cacheDirPath,
-                includingPropertiesForKeys: nil
-            )
+        // Fallback to content scan
+        guard let fileURLs = try? FileManager.default.contentsOfDirectory(at: cacheDirPath, includingPropertiesForKeys: nil) else {
+            return nil
+        }
 
-            for fileURL in fileURLs {
-                if fileURL.pathExtension == "json" {
-                    // Try to load the file and check its content
-                    do {
-                        let data = try Data(contentsOf: fileURL)
-                        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                           let storedStartUrl = json["startUrl"] as? String,
-                           let storedRegion = json["region"] as? String,
-                           storedStartUrl == startUrl && storedRegion == region {
-                            return fileURL
-                        }
-                    } catch {
-                        continue
-                    }
-                }
+        for fileURL in fileURLs where fileURL.pathExtension == "json" {
+            guard let data = try? Data(contentsOf: fileURL),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let storedStartUrl = json["startUrl"] as? String,
+                  storedStartUrl == startUrl,
+                  json["accessToken"] != nil else {
+                continue
             }
-        } catch {
-            print("Error reading SSO cache directory: \(error)")
+            return fileURL
         }
 
         return nil

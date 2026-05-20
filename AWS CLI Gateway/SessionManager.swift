@@ -7,7 +7,9 @@ class SessionManager {
     // MARK: - Properties
     private var sessionTimer: Timer?
     private var activeProfile: String?
-    private var expiryDate: Date?
+    private var expiryDate: Date?  // Role credential expiry (cli/cache)
+    private var ssoTokenExpiryDate: Date?  // SSO session token expiry (sso/cache)
+    private var lastHealthCheck: Date?
     private var isCleanDisconnect: Bool = false
     private static var findingCredentials = false
     private var monitoringTask: Task<Void, Never>?
@@ -170,10 +172,15 @@ class SessionManager {
                     // Check for cancellation
                     if Task.isCancelled { return }
 
-                    print("SessionManager: Found valid credentials in matched file, expires at: \(ssoToken.expiresAt)")
+                    // Also read the SSO session token expiry
+                    let ssoExpiry = SSOTokenManager.shared.getSSOTokenExpiry(forProfile: profileName)
+
+                    print("SessionManager: Found valid credentials in matched file, expires at: \(ssoToken.expiresAt), SSO token expires: \(String(describing: ssoExpiry))")
                     await MainActor.run {
                         if !Task.isCancelled && self.isMonitoring && self.activeProfile == profileName {
                             self.expiryDate = ssoToken.expiresAt
+                            self.ssoTokenExpiryDate = ssoExpiry
+                            self.lastHealthCheck = Date()
                             self.startSessionTimer()
                         }
                     }
@@ -189,10 +196,14 @@ class SessionManager {
                 // Check for cancellation
                 if Task.isCancelled { return }
 
-                print("SessionManager: Found credentials with legacy approach, expires at: \(ssoToken.expiresAt)")
+                let ssoExpiry = SSOTokenManager.shared.getSSOTokenExpiry(forProfile: profileName)
+
+                print("SessionManager: Found credentials with legacy approach, expires at: \(ssoToken.expiresAt), SSO token expires: \(String(describing: ssoExpiry))")
                 await MainActor.run {
                     if !Task.isCancelled && self.isMonitoring && self.activeProfile == profileName {
                         self.expiryDate = ssoToken.expiresAt
+                        self.ssoTokenExpiryDate = ssoExpiry
+                        self.lastHealthCheck = Date()
                         self.startSessionTimer()
                     }
                 }
@@ -1017,28 +1028,60 @@ class SessionManager {
     }
 
     private var expiryRefreshTime: Date? = nil
+    private let healthCheckInterval: TimeInterval = 300 // 5 minutes
 
-    // Then modify your checkSessionStatus method
     private func checkSessionStatus() {
-        // Only proceed if actively monitoring
         guard isMonitoring, !isCleanDisconnect else { return }
 
-        // Only refresh expiration time occasionally, not every check
         let now = Date()
+
+        // Every 60 seconds: re-read both cache files to refresh expiry dates
         if expiryRefreshTime == nil || now.timeIntervalSince(expiryRefreshTime!) > 60 {
             expiryRefreshTime = now
 
-            // Re-check the expiration time
             if let profileName = activeProfile {
                 Task { [weak self] in
                     guard let self = self, self.isMonitoring else { return }
 
+                    // Refresh role credential expiry
                     if let cacheFilename = self.profileCacheFileMap[profileName],
                        let token = try? await self.readCredentialsFromCacheFile(cacheFilename) {
                         await MainActor.run {
                             if self.isMonitoring && self.expiryDate != token.expiresAt {
                                 self.expiryDate = token.expiresAt
-                                print("SessionManager: Updated expiration date to \(token.expiresAt)")
+                                print("SessionManager: Updated role credential expiry to \(token.expiresAt)")
+                            }
+                        }
+                    }
+
+                    // Refresh SSO token expiry
+                    let ssoExpiry = SSOTokenManager.shared.getSSOTokenExpiry(forProfile: profileName)
+                    await MainActor.run {
+                        if self.isMonitoring && self.ssoTokenExpiryDate != ssoExpiry {
+                            self.ssoTokenExpiryDate = ssoExpiry
+                            print("SessionManager: Updated SSO token expiry to \(String(describing: ssoExpiry))")
+                        }
+                    }
+                }
+            }
+        }
+
+        // Health check: every 5 minutes, verify credentials actually work
+        if let profileName = activeProfile,
+           (lastHealthCheck == nil || now.timeIntervalSince(lastHealthCheck!) > healthCheckInterval) {
+            lastHealthCheck = now
+            Task { [weak self] in
+                guard let self = self, self.isMonitoring else { return }
+                do {
+                    _ = try await CommandRunner.shared.runCommand("aws", args: ["sts", "get-caller-identity", "--profile", profileName])
+                } catch {
+                    let errorString = "\(error)"
+                    if errorString.contains("ExpiredToken") || errorString.contains("InvalidIdentityToken") ||
+                       errorString.contains("UnauthorizedAccess") || errorString.contains("The SSO session") {
+                        print("SessionManager: Health check failed — session invalid: \(errorString)")
+                        await MainActor.run {
+                            if self.isMonitoring {
+                                self.handleExpiredSession()
                             }
                         }
                     }
@@ -1046,7 +1089,16 @@ class SessionManager {
             }
         }
 
-        guard let expiration = expiryDate else {
+        // Compute effective expiry = min(roleCredExpiry, ssoTokenExpiry)
+        let effectiveExpiry: Date?
+        switch (expiryDate, ssoTokenExpiryDate) {
+        case let (role?, sso?): effectiveExpiry = min(role, sso)
+        case let (role?, nil): effectiveExpiry = role
+        case let (nil, sso?): effectiveExpiry = sso
+        case (nil, nil): effectiveExpiry = nil
+        }
+
+        guard let expiration = effectiveExpiry else {
             handleExpiredSession()
             return
         }
