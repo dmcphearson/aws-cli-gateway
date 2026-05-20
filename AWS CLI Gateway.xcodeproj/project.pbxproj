@@ -28,6 +28,7 @@
 		1A96BB682D78823700C64C80 /* ConfigManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB562D78823700C64C80 /* ConfigManager.swift */; };
 		1A96BB692D78823700C64C80 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB582D78823700C64C80 /* ContentView.swift */; };
 		1A96BB6A2D78823700C64C80 /* SSOProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB5E2D78823700C64C80 /* SSOProfile.swift */; };
+		839AE00697114A448ECD6D3A /* ProfileSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71F92D750D5F4EA58B1DAE73 /* ProfileSession.swift */; };
 		1A96BB6B2D78823700C64C80 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB512D78823700C64C80 /* AppDelegate.swift */; };
 		1A96BB6C2D78823700C64C80 /* WindowManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB602D78823700C64C80 /* WindowManager.swift */; };
 		1A96BB6D2D78823700C64C80 /* Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB572D78823700C64C80 /* Constants.swift */; };
@@ -117,6 +118,7 @@
 		1A96BB5C2D78823700C64C80 /* SessionCountdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCountdownView.swift; sourceTree = "<group>"; };
 		1A96BB5D2D78823700C64C80 /* SessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionManager.swift; sourceTree = "<group>"; };
 		1A96BB5E2D78823700C64C80 /* SSOProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOProfile.swift; sourceTree = "<group>"; };
+		71F92D750D5F4EA58B1DAE73 /* ProfileSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileSession.swift; sourceTree = "<group>"; };
 		1A96BB5F2D78823700C64C80 /* StatusIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusIndicator.swift; sourceTree = "<group>"; };
 		1A96BB602D78823700C64C80 /* WindowManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowManager.swift; sourceTree = "<group>"; };
 		1A96BB952D7B429800C64C80 /* ProfileHistoryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileHistoryManager.swift; sourceTree = "<group>"; };
@@ -199,6 +201,7 @@
 				1A96BB5C2D78823700C64C80 /* SessionCountdownView.swift */,
 				1A96BB5D2D78823700C64C80 /* SessionManager.swift */,
 				1A96BB5E2D78823700C64C80 /* SSOProfile.swift */,
+				71F92D750D5F4EA58B1DAE73 /* ProfileSession.swift */,
 				F27D5A472D96E07500261F26 /* ManagerModels.swift */,
 				1A96BB5F2D78823700C64C80 /* StatusIndicator.swift */,
 				1A96BB602D78823700C64C80 /* WindowManager.swift */,
@@ -378,6 +381,7 @@
 				1A1EA61B2D9861FB00294D9A /* SSOTokenManager.swift in Sources */,
 				1A96BB692D78823700C64C80 /* ContentView.swift in Sources */,
 				1A96BB6A2D78823700C64C80 /* SSOProfile.swift in Sources */,
+				839AE00697114A448ECD6D3A /* ProfileSession.swift in Sources */,
 				1A96BB6B2D78823700C64C80 /* AppDelegate.swift in Sources */,
 				1A96BB6C2D78823700C64C80 /* WindowManager.swift in Sources */,
 				1A96BB6D2D78823700C64C80 /* Constants.swift in Sources */,

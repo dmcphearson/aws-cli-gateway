@@ -72,59 +72,76 @@ class ProfileHistoryManager {
         }
     }
 
-    /// Sets a profile as the connected profile (currently active)
+    /// Maximum number of concurrently connected profiles
+    static let maxConcurrentProfiles = 5
+
+    /// Whether another profile can be connected (under the cap)
+    func canConnectProfile() -> Bool {
+        return getConnectedProfiles().count < Self.maxConcurrentProfiles
+    }
+
+    /// Connects a profile (additive — does not disconnect others). Respects the 5-profile cap.
     func setConnectedProfile(_ profileName: String) {
-        // Reset all profiles to disconnected
-        for i in 0..<profiles.count {
-            profiles[i].isConnected = false
+        guard canConnectProfile() || profiles.first(where: { $0.originalName == profileName })?.isConnected == true else {
+            print("Warning: Cannot connect \(profileName) — max \(Self.maxConcurrentProfiles) profiles reached")
+            return
         }
 
-        // Find and mark the new connected profile
         if let index = profiles.firstIndex(where: { $0.originalName == profileName }) {
             profiles[index].isConnected = true
         } else if let index = profiles.firstIndex(where: { $0.id == profileName }) {
-            // If provided an ID instead of a name
             profiles[index].isConnected = true
         } else {
-            // If profile doesn't exist yet, do nothing (this shouldn't happen normally)
             print("Warning: Tried to set non-existent profile \(profileName) as connected")
+            return
         }
 
-        // Connection status changes are critical - save immediately
         saveProfiles(immediate: true)
     }
 
-    /// Sets a profile as the connected profile by ID
+    /// Connects a profile by ID (additive)
     func setConnectedProfileById(_ id: String) {
-        // Reset all profiles to disconnected
-        for i in 0..<profiles.count {
-            profiles[i].isConnected = false
+        guard canConnectProfile() || profiles.first(where: { $0.id == id })?.isConnected == true else {
+            print("Warning: Cannot connect profile — max \(Self.maxConcurrentProfiles) profiles reached")
+            return
         }
 
-        // Find and mark the new connected profile
         if let index = profiles.firstIndex(where: { $0.id == id }) {
             profiles[index].isConnected = true
-            // Connection status changes are critical - save immediately
+            saveProfiles(immediate: true)
+        }
+    }
+
+    /// Disconnects a single profile
+    func setProfileDisconnected(_ profileName: String) {
+        if let index = profiles.firstIndex(where: { $0.originalName == profileName }) {
+            profiles[index].isConnected = false
+            saveProfiles(immediate: true)
+        } else if let index = profiles.firstIndex(where: { $0.id == profileName }) {
+            profiles[index].isConnected = false
             saveProfiles(immediate: true)
         }
     }
 
     /// Clears the connected status from all profiles
     func clearConnectedProfile() {
-        // Reset all profiles to disconnected
         for i in 0..<profiles.count {
             profiles[i].isConnected = false
         }
-        // Connection status changes are critical - save immediately
         saveProfiles(immediate: true)
     }
 
-    /// Gets the currently connected profile
+    /// Gets all currently connected profiles
+    func getConnectedProfiles() -> [ProfileInfo] {
+        return profiles.filter { $0.isConnected }
+    }
+
+    /// Gets the first connected profile (backward compat)
     func getConnectedProfile() -> ProfileInfo? {
         return profiles.first(where: { $0.isConnected })
     }
 
-    /// Gets the original name for the connected profile
+    /// Gets the original name for the first connected profile (backward compat)
     func getConnectedProfileOriginalName() -> String? {
         return profiles.first(where: { $0.isConnected })?.originalName
     }
