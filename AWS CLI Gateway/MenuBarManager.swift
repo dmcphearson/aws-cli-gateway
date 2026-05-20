@@ -222,6 +222,10 @@ class MenuBarManager: NSObject, NSMenuDelegate {
     // Per-profile text fields for live countdown updates (avoid full menu rebuild every second)
     private var sessionTimeFields: [String: NSTextField] = [:]
 
+    // Notification cooldown: tracks last notification time per profile+threshold to prevent duplicates
+    private var lastNotificationSent: [String: Date] = [:]
+    private let notificationCooldown: TimeInterval = 60
+
     private override init() {}
     
     func menuWillOpen(_ menu: NSMenu) {
@@ -369,7 +373,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         )
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(handleSessionExpired),
+            selector: #selector(handleSessionExpired(_:)),
             name: Notification.Name(Constants.Notifications.sessionExpired),
             object: nil
         )
@@ -973,31 +977,53 @@ class MenuBarManager: NSObject, NSMenuDelegate {
     }
 
     @MainActor
-    @objc private func handleSessionExpired() {
-        showError("Session Expired", message: "Your session has expired. Please reconnect.")
-
-        // Clear the connected profile
-        ProfileHistoryManager.shared.clearConnectedProfile()
-
-        activeProfile = nil
-
-        // Rebuild menu to hide star buttons since there's no active session
+    @objc private func handleSessionExpired(_ notification: Notification) {
+        // If a specific profile expired, only handle that one
+        if let profileName = notification.userInfo?[Constants.NotificationKeys.profileName] as? String {
+            ProfileHistoryManager.shared.setProfileDisconnected(profileName)
+            if activeProfile == profileName {
+                activeProfile = ProfileHistoryManager.shared.getConnectedProfileOriginalName()
+            }
+        } else {
+            // Legacy: all sessions expired
+            ProfileHistoryManager.shared.clearConnectedProfile()
+            activeProfile = nil
+        }
         buildMenu()
     }
 
     // MARK: - Token Expiration Handling
 
-    /// Handles token expiration warnings by showing notifications or prompts
+    /// Handles token expiration warnings with cooldown to prevent duplicates
     private func handleTokenExpirationWarning(profileName: String, timeUntilExpiry: TimeInterval) {
+        let level: String
         if timeUntilExpiry <= 0 {
-            // Token has expired - show immediate notification
-            showTokenExpiredNotification(profileName: profileName)
+            level = "expired"
         } else if timeUntilExpiry <= 60 {
-            // Less than 1 minute - critical warning
-            showTokenExpiringNotification(profileName: profileName, timeUntilExpiry: timeUntilExpiry, isCritical: true)
+            level = "critical"
         } else if timeUntilExpiry <= 300 {
-            // Less than 5 minutes - warning
+            level = "warning"
+        } else {
+            return
+        }
+
+        // Check cooldown — don't fire duplicate notifications within 60s for same profile+level
+        let key = "\(profileName)-\(level)"
+        if let lastSent = lastNotificationSent[key],
+           Date().timeIntervalSince(lastSent) < notificationCooldown {
+            return
+        }
+        lastNotificationSent[key] = Date()
+
+        switch level {
+        case "expired":
+            showTokenExpiredNotification(profileName: profileName)
+        case "critical":
+            showTokenExpiringNotification(profileName: profileName, timeUntilExpiry: timeUntilExpiry, isCritical: true)
+        case "warning":
             showTokenExpiringNotification(profileName: profileName, timeUntilExpiry: timeUntilExpiry, isCritical: false)
+        default:
+            break
         }
     }
 
