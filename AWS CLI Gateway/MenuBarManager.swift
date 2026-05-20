@@ -204,25 +204,23 @@ class MenuBarManager: NSObject, NSMenuDelegate {
     private var renewMenuItem: NSMenuItem!
     private var disconnectMenuItem: NSMenuItem!
 
-    // The active profile name
+    // The primary active profile (for backward compat with single-profile flows)
     private var activeProfile: String? {
         didSet {
             Task { @MainActor in
                 if let profile = activeProfile {
                     SessionManager.shared.startMonitoring(for: profile)
-
-                    // Update the connected profile in ProfileHistoryManager
                     ProfileHistoryManager.shared.setConnectedProfile(profile)
-                } else {
+                } else if ProfileHistoryManager.shared.getConnectedProfiles().isEmpty {
                     SessionManager.shared.cleanDisconnect()
-
-                    // Clear the connected profile in ProfileHistoryManager
-                    ProfileHistoryManager.shared.clearConnectedProfile()
                 }
                 buildMenu()
             }
         }
     }
+
+    // Per-profile text fields for live countdown updates (avoid full menu rebuild every second)
+    private var sessionTimeFields: [String: NSTextField] = [:]
 
     private override init() {}
     
@@ -384,9 +382,10 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         let currentSessionTime = sessionMenuItem?.title ?? "Session: --:--:--"
         mainMenu.removeAllItems()
 
+        let connectedProfiles = ProfileHistoryManager.shared.getConnectedProfiles()
         let connectionsSubMenu = NSMenu()
         var profiles = ConfigManager.shared.getProfiles()
-        
+
         profiles.sort { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
 
         // Calculate the maximum width needed for the profile names
@@ -398,10 +397,10 @@ class MenuBarManager: NSObject, NSMenuDelegate {
             maxProfileWidth = max(maxProfileWidth, nameWidth)
         }
 
-        // Calculate total item width dynamically based on whether stars are visible
-        let hasActiveSession = activeProfile != nil
-        let starWidth: CGFloat = hasActiveSession ? 30 : 0 // 25 for star + 5 spacing
-        let leftPadding: CGFloat = hasActiveSession ? 0 : 15 // Default padding when no stars
+        // Always show star buttons for connect/disconnect toggle
+        let hasActiveSession = !connectedProfiles.isEmpty || activeProfile != nil
+        let starWidth: CGFloat = 30
+        let leftPadding: CGFloat = 0
         let deleteWidth: CGFloat = 25
         let rightPadding: CGFloat = 25
         let totalItemWidth = leftPadding + starWidth + maxProfileWidth + deleteWidth + rightPadding
@@ -413,31 +412,27 @@ class MenuBarManager: NSObject, NSMenuDelegate {
             for profile in profiles {
                 let itemView = HighlightableMenuItemView(frame: NSRect(x: 0, y: 0, width: totalItemWidth, height: Constants.UI.menuItemHeight))
 
-                // Dynamic positioning based on whether stars are visible
-                let profileButtonX: CGFloat = hasActiveSession ? 35 : 15
+                let profileButtonX: CGFloat = 35
                 let deleteButtonX: CGFloat = totalItemWidth - 30
 
-                // Create star button - only add if there's an active session
-                var starButton: ProfileButton?
-                if hasActiveSession {
-                    starButton = ProfileButton(frame: NSRect(x: 5, y: 0, width: 25, height: Constants.UI.menuItemHeight))
-                    starButton!.profile = profile
-                    starButton!.target = self
-                    starButton!.action = #selector(toggleProfileConnection(_:))
-                    starButton!.bezelStyle = .inline
-                    starButton!.isBordered = false
+                // Star button — always visible, toggles connect/disconnect
+                let starButton = ProfileButton(frame: NSRect(x: 5, y: 0, width: 25, height: Constants.UI.menuItemHeight))
+                starButton.profile = profile
+                starButton.target = self
+                starButton.action = #selector(toggleProfileConnection(_:))
+                starButton.bezelStyle = .inline
+                starButton.isBordered = false
 
-                    // Set appropriate star icon based on connection state
-                    if profile.name == activeProfile {
-                        starButton!.image = NSImage(systemSymbolName: "star.fill", accessibilityDescription: "Connected")
-                        if let img = starButton!.image {
-                            starButton!.image = tintImage(img, with: .systemYellow)
-                        }
-                    } else {
-                        starButton!.image = NSImage(systemSymbolName: "star", accessibilityDescription: "Switch to Profile")
-                        if let img = starButton!.image {
-                            starButton!.image = tintImage(img, with: .secondaryLabelColor)
-                        }
+                let isProfileConnected = connectedProfiles.contains(where: { $0.originalName == profile.name })
+                if isProfileConnected {
+                    starButton.image = NSImage(systemSymbolName: "star.fill", accessibilityDescription: "Connected")
+                    if let img = starButton.image {
+                        starButton.image = tintImage(img, with: .systemYellow)
+                    }
+                } else {
+                    starButton.image = NSImage(systemSymbolName: "star", accessibilityDescription: "Connect")
+                    if let img = starButton.image {
+                        starButton.image = tintImage(img, with: .secondaryLabelColor)
                     }
                 }
 
@@ -461,10 +456,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
                 deleteButton.action = #selector(deleteProfile(_:))
                 deleteButton.profile = profile
 
-                // Only add star button if it exists (when there's an active session)
-                if let starButton = starButton {
-                    itemView.addSubview(starButton)
-                }
+                itemView.addSubview(starButton)
                 itemView.addSubview(profileButton)
                 itemView.addSubview(deleteButton)
 
@@ -478,74 +470,122 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         // Use maximum of totalItemWidth or 250 for the menu width
         let menuWidth = max(totalItemWidth, 250)
 
-        if activeProfile != nil {
+        // Active Sessions section
+        if !connectedProfiles.isEmpty {
             mainMenu.addItem(NSMenuItem.separator())
 
-            let menuItem = NSMenuItem()
+            // Header
+            let headerItem = NSMenuItem(title: "Active Sessions (\(connectedProfiles.count)/\(ProfileHistoryManager.maxConcurrentProfiles))", action: nil, keyEquivalent: "")
+            headerItem.isEnabled = false
+            mainMenu.addItem(headerItem)
 
-            // Create main container with horizontal insets
-            let horizontalInset: CGFloat = 8 // Adjust this value as needed
-            let containerWidth = menuWidth - (horizontalInset * 2)
-            let containerView = NSView(frame: NSRect(x: horizontalInset, y: 0, width: containerWidth, height: 40))
+            // Clear old text field references
+            sessionTimeFields.removeAll()
 
-            // Add rounded corners and background
-            containerView.wantsLayer = true
-            containerView.layer?.backgroundColor = NSColor.systemRed.withAlphaComponent(0.2).cgColor
-            containerView.layer?.cornerRadius = 6
-            containerView.layer?.masksToBounds = true
+            // Per-profile session rows
+            for profileInfo in connectedProfiles {
+                let profileName = profileInfo.originalName
+                let session = SessionManager.shared.activeSessions[profileName]
+                let timeString = session?.formattedTimeRemaining ?? "--:--:--"
+                let rowHeight: CGFloat = 28
+                let rowWidth = menuWidth
 
-            // Create a background frame that spans the entire menu item width
-            let outerContainer = NSView(frame: NSRect(x: 0, y: 0, width: menuWidth, height: 40))
-            outerContainer.wantsLayer = true
-            outerContainer.layer?.backgroundColor = NSColor.clear.cgColor
+                let rowView = HighlightableMenuItemView(frame: NSRect(x: 0, y: 0, width: rowWidth, height: rowHeight))
 
-            // Add the rounded container to the outer container
-            outerContainer.addSubview(containerView)
+                // Status dot
+                let dotSize: CGFloat = 8
+                let dotView = NSView(frame: NSRect(x: 10, y: (rowHeight - dotSize) / 2, width: dotSize, height: dotSize))
+                dotView.wantsLayer = true
+                dotView.layer?.cornerRadius = dotSize / 2
+                switch session?.status {
+                case .active: dotView.layer?.backgroundColor = NSColor.systemGreen.cgColor
+                case .expiringSoon: dotView.layer?.backgroundColor = NSColor.systemOrange.cgColor
+                case .expired: dotView.layer?.backgroundColor = NSColor.systemRed.cgColor
+                default: dotView.layer?.backgroundColor = NSColor.systemGray.cgColor
+                }
+                rowView.addSubview(dotView)
 
-            // Set up the text field to match the new container size
-            let customView = NSTextField(frame: NSRect(x: 0, y: 0, width: containerWidth, height: 40))
-            customView.stringValue = currentSessionTime
-            customView.isEditable = false
-            customView.isBordered = false
-            customView.backgroundColor = .clear
-            customView.textColor = NSColor.white
-            customView.alignment = .center
-            customView.font = NSFont.boldSystemFont(ofSize: 16)
-            customView.cell?.isScrollable = false
-            customView.cell?.wraps = false
-            customView.cell?.lineBreakMode = .byClipping
+                // Profile name
+                let nameField = NSTextField(frame: NSRect(x: 24, y: 0, width: maxProfileWidth, height: rowHeight))
+                nameField.stringValue = profileName
+                nameField.isEditable = false
+                nameField.isBordered = false
+                nameField.backgroundColor = .clear
+                nameField.textColor = .labelColor
+                nameField.font = NSFont.systemFont(ofSize: 12)
+                nameField.lineBreakMode = .byTruncatingTail
+                rowView.addSubview(nameField)
 
-            customView.setContentHuggingPriority(.defaultHigh, for: .vertical)
-            customView.setContentCompressionResistancePriority(.defaultHigh, for: .vertical)
-            customView.centerTextVertically()
+                // Countdown
+                let timerX = 24 + maxProfileWidth + 5
+                let timerWidth: CGFloat = 65
+                let timerField = NSTextField(frame: NSRect(x: timerX, y: 0, width: timerWidth, height: rowHeight))
+                timerField.stringValue = timeString
+                timerField.isEditable = false
+                timerField.isBordered = false
+                timerField.backgroundColor = .clear
+                timerField.textColor = .secondaryLabelColor
+                timerField.font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+                timerField.alignment = .right
+                rowView.addSubview(timerField)
+                sessionTimeFields[profileName] = timerField
 
-            containerView.addSubview(customView)
-            menuItem.view = outerContainer
-            sessionMenuItem = menuItem
-            mainMenu.addItem(sessionMenuItem)
+                // Refresh button
+                let refreshX = timerX + timerWidth + 4
+                let refreshButton = ProfileButton(frame: NSRect(x: refreshX, y: 2, width: 22, height: rowHeight - 4))
+                refreshButton.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Refresh")
+                refreshButton.bezelStyle = .inline
+                refreshButton.isBordered = false
+                refreshButton.target = self
+                refreshButton.action = #selector(refreshProfileSession(_:))
+                refreshButton.profile = profiles.first(where: { $0.name == profileName })
+                rowView.addSubview(refreshButton)
 
-            SessionManager.shared.onSessionUpdate = { [weak self] timeString in
+                // Disconnect button
+                let disconnectX = refreshX + 24
+                let disconnectButton = ProfileButton(frame: NSRect(x: disconnectX, y: 2, width: 22, height: rowHeight - 4))
+                disconnectButton.image = NSImage(systemSymbolName: "xmark.circle", accessibilityDescription: "Disconnect")
+                disconnectButton.bezelStyle = .inline
+                disconnectButton.isBordered = false
+                disconnectButton.target = self
+                disconnectButton.action = #selector(disconnectSingleProfile(_:))
+                disconnectButton.profile = profiles.first(where: { $0.name == profileName })
+                rowView.addSubview(disconnectButton)
+
+                let menuItem = NSMenuItem()
+                menuItem.view = rowView
+                mainMenu.addItem(menuItem)
+            }
+
+            // Set up the multi-session update callback (updates text fields without rebuilding menu)
+            SessionManager.shared.onSessionsUpdated = { [weak self] sessions in
                 DispatchQueue.main.async {
-                    if let outerContainer = self?.sessionMenuItem?.view,
-                       let container = outerContainer.subviews.first,
-                       let textField = container.subviews.first as? NSTextField {
-                        textField.stringValue = timeString
+                    guard let self = self else { return }
+                    for (profileName, session) in sessions {
+                        self.sessionTimeFields[profileName]?.stringValue = session.formattedTimeRemaining
                     }
                 }
             }
-            
+
+            // Also keep legacy single-profile callback for the primary profile
+            SessionManager.shared.onSessionUpdate = { [weak self] timeString in
+                DispatchQueue.main.async {
+                    guard let self = self, let primary = self.activeProfile else { return }
+                    self.sessionTimeFields[primary]?.stringValue = timeString.replacingOccurrences(of: "Session: ", with: "")
+                }
+            }
+
             mainMenu.addItem(NSMenuItem.separator())
-                        
-            renewMenuItem = NSMenuItem(title: "Renew Session", action: #selector(renewSession), keyEquivalent: "")
+
+            renewMenuItem = NSMenuItem(title: "Renew All Sessions", action: #selector(renewSession), keyEquivalent: "")
             renewMenuItem.target = self
             mainMenu.addItem(renewMenuItem)
 
-            disconnectMenuItem = NSMenuItem(title: "Disconnect", action: #selector(disconnectProfile), keyEquivalent: "")
+            disconnectMenuItem = NSMenuItem(title: "Disconnect All", action: #selector(disconnectProfile), keyEquivalent: "")
             disconnectMenuItem.target = self
             mainMenu.addItem(disconnectMenuItem)
-            
-            mainMenu.addItem(NSMenuItem.separator())
 
+            mainMenu.addItem(NSMenuItem.separator())
         }
         
         connectionsMenuItem = NSMenuItem(title: "Connections", action: nil, keyEquivalent: "")
@@ -613,13 +653,53 @@ class MenuBarManager: NSObject, NSMenuDelegate {
     @objc private func toggleProfileConnection(_ sender: ProfileButton) {
         guard let profile = sender.profile else { return }
 
-        if profile.name == activeProfile {
-            // If it's already the active profile, do nothing
-            return
+        let connectedProfiles = ProfileHistoryManager.shared.getConnectedProfiles()
+        let isConnected = connectedProfiles.contains(where: { $0.originalName == profile.name })
+
+        if isConnected {
+            // Disconnect this profile
+            SessionManager.shared.stopMonitoring(for: profile.name)
+            ProfileHistoryManager.shared.setProfileDisconnected(profile.name)
+            if activeProfile == profile.name {
+                activeProfile = ProfileHistoryManager.shared.getConnectedProfileOriginalName()
+            }
+            buildMenu()
         } else {
-            // Switch to this profile (star button only appears when there's an active session)
-            print("MenuBarManager: Switching from \(activeProfile ?? "none") to \(profile.name)")
+            // Connect this profile (additive)
+            if !ProfileHistoryManager.shared.canConnectProfile() {
+                showError("Connection Limit", message: "Maximum \(ProfileHistoryManager.maxConcurrentProfiles) concurrent profiles reached.")
+                return
+            }
             connectToProfile(sender)
+        }
+    }
+
+    @MainActor
+    @objc private func refreshProfileSession(_ sender: ProfileButton) {
+        guard let profile = sender.profile else { return }
+        Task {
+            let success = await SessionManager.shared.refreshSSOSession(for: profile.name)
+            if !success {
+                showError("Refresh Failed", message: "Could not refresh session for \(profile.name)")
+            }
+        }
+    }
+
+    @MainActor
+    @objc private func disconnectSingleProfile(_ sender: ProfileButton) {
+        guard let profile = sender.profile else { return }
+        Task {
+            SessionManager.shared.cleanDisconnect(for: profile.name)
+            ProfileHistoryManager.shared.setProfileDisconnected(profile.name)
+            do {
+                _ = try await CommandRunner.shared.runCommand("aws", args: ["sso", "logout", "--profile", profile.name])
+            } catch {
+                print("Logout failed for \(profile.name): \(error.localizedDescription)")
+            }
+            if activeProfile == profile.name {
+                activeProfile = ProfileHistoryManager.shared.getConnectedProfileOriginalName()
+            }
+            buildMenu()
         }
     }
 
