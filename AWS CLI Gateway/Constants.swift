@@ -92,6 +92,10 @@ enum Constants {
     enum Session {
         // Check intervals
         static let checkInterval: TimeInterval = 60 // 1 minute
+        static let healthCheckInterval: TimeInterval = 300 // 5 minutes
+
+        // Multi-profile cap
+        static let maxConcurrentProfiles = 5
 
         // Warning thresholds (in seconds)
         static let warningThresholds: [TimeInterval] = [
