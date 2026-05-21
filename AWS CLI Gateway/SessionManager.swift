@@ -1225,14 +1225,8 @@ class SessionManager {
             }
         }
 
-        // Legacy single-profile behavior: use the primary active profile for UI
-        let effectiveExpiry: Date?
-        switch (expiryDate, ssoTokenExpiryDate) {
-        case let (role?, sso?): effectiveExpiry = min(role, sso)
-        case let (role?, nil): effectiveExpiry = role
-        case let (nil, sso?): effectiveExpiry = sso
-        case (nil, nil): effectiveExpiry = nil
-        }
+        // SSO token is the real session lifetime — role creds auto-refresh while SSO token is valid
+        let effectiveExpiry: Date? = ssoTokenExpiryDate ?? expiryDate
 
         guard let expiration = effectiveExpiry else {
             handleExpiredSession()
