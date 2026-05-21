@@ -486,15 +486,25 @@ class MenuBarManager: NSObject, NSMenuDelegate {
             // Clear old text field references
             sessionTimeFields.removeAll()
 
+            // Calculate active session row width to fit: dot + name + timer + refresh + disconnect
+            let sessionRowWidth = max(menuWidth, 280)
+
             // Per-profile session rows
             for profileInfo in connectedProfiles {
                 let profileName = profileInfo.originalName
                 let session = SessionManager.shared.activeSessions[profileName]
                 let timeString = session?.formattedTimeRemaining ?? "--:--:--"
                 let rowHeight: CGFloat = 28
-                let rowWidth = menuWidth
 
-                let rowView = HighlightableMenuItemView(frame: NSRect(x: 0, y: 0, width: rowWidth, height: rowHeight))
+                let rowView = HighlightableMenuItemView(frame: NSRect(x: 0, y: 0, width: sessionRowWidth, height: rowHeight))
+
+                // Layout from right edge inward
+                let buttonSize: CGFloat = 22
+                let rightPad: CGFloat = 8
+                let disconnectX = sessionRowWidth - rightPad - buttonSize
+                let refreshX = disconnectX - buttonSize - 2
+                let timerWidth: CGFloat = 62
+                let timerX = refreshX - timerWidth - 4
 
                 // Status dot
                 let dotSize: CGFloat = 8
@@ -509,8 +519,10 @@ class MenuBarManager: NSObject, NSMenuDelegate {
                 }
                 rowView.addSubview(dotView)
 
-                // Profile name
-                let nameField = NSTextField(frame: NSRect(x: 24, y: 0, width: maxProfileWidth, height: rowHeight))
+                // Profile name — fills space between dot and timer
+                let nameX: CGFloat = 24
+                let nameWidth = timerX - nameX - 4
+                let nameField = NSTextField(frame: NSRect(x: nameX, y: 0, width: nameWidth, height: rowHeight))
                 nameField.stringValue = profileName
                 nameField.isEditable = false
                 nameField.isBordered = false
@@ -520,9 +532,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
                 nameField.lineBreakMode = .byTruncatingTail
                 rowView.addSubview(nameField)
 
-                // Countdown
-                let timerX = 24 + maxProfileWidth + 5
-                let timerWidth: CGFloat = 65
+                // Countdown timer
                 let timerField = NSTextField(frame: NSRect(x: timerX, y: 0, width: timerWidth, height: rowHeight))
                 timerField.stringValue = timeString
                 timerField.isEditable = false
@@ -535,8 +545,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
                 sessionTimeFields[profileName] = timerField
 
                 // Refresh button
-                let refreshX = timerX + timerWidth + 4
-                let refreshButton = ProfileButton(frame: NSRect(x: refreshX, y: 2, width: 22, height: rowHeight - 4))
+                let refreshButton = ProfileButton(frame: NSRect(x: refreshX, y: 3, width: buttonSize, height: buttonSize))
                 refreshButton.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Refresh")
                 refreshButton.bezelStyle = .inline
                 refreshButton.isBordered = false
@@ -546,8 +555,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
                 rowView.addSubview(refreshButton)
 
                 // Disconnect button
-                let disconnectX = refreshX + 24
-                let disconnectButton = ProfileButton(frame: NSRect(x: disconnectX, y: 2, width: 22, height: rowHeight - 4))
+                let disconnectButton = ProfileButton(frame: NSRect(x: disconnectX, y: 3, width: buttonSize, height: buttonSize))
                 disconnectButton.image = NSImage(systemSymbolName: "xmark.circle", accessibilityDescription: "Disconnect")
                 disconnectButton.bezelStyle = .inline
                 disconnectButton.isBordered = false
