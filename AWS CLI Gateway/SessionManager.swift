@@ -51,7 +51,6 @@ class SessionManager {
     private init() {
         if let savedMap = UserDefaults.standard.dictionary(forKey: "profile_cache_file_map") as? [String: String] {
             profileCacheFileMap = savedMap
-            print("SessionManager: Loaded \(savedMap.count) cached profile mappings")
         } else {
             profileCacheFileMap = [:]
         }
@@ -63,7 +62,6 @@ class SessionManager {
         let sessionName = ConfigManager.shared.getSSOSessionName(for: profile.name)
 
         if let sessionName = sessionName {
-            print("SessionManager: Using session name '\(sessionName)' for hash generation")
 
             // Create a components dict with sessionName instead of startUrl
             let components: [String: String] = [
@@ -79,7 +77,6 @@ class SessionManager {
             }
 
             let jsonString = String(data: jsonData, encoding: .utf8) ?? ""
-            print("SessionManager: JSON for hash: \(jsonString)")
 
             // Generate SHA-1 hash
             let data = Data(jsonString.utf8)
@@ -90,11 +87,9 @@ class SessionManager {
 
             // Convert to hex string
             let hashString = digest.map { String(format: "%02x", $0) }.joined()
-            print("SessionManager: Generated hash: \(hashString)")
             return hashString
         } else {
             // Fallback to the old method using startUrl
-            print("SessionManager: No session name found, using startUrl for hash")
             return generateLegacyCacheFileHash(
                 roleName: profile.roleName,
                 accountId: profile.accountId,
@@ -136,9 +131,8 @@ class SessionManager {
 
     @MainActor
     func startMonitoring(for profileName: String) {
-        // Cancel any previous task for THIS profile
+        // Cancel any previous task for THIS profile only
         monitoringTasks[profileName]?.cancel()
-        monitoringTask?.cancel()
 
         // Only invalidate timer if no other sessions are active
         if activeSessions.isEmpty {
@@ -156,13 +150,12 @@ class SessionManager {
         self.isCleanDisconnect = false
         self.isMonitoring = true
         self.activeProfile = profileName
-        print("SessionManager: Starting monitoring for profile: \(profileName)")
 
         // Update UI immediately to indicate we're working on it
         self.onSessionUpdate?("Session: Connecting...")
 
-        // Create a new task with proper cancellation support
-        monitoringTask = Task { [weak self] in
+        // Create a new task for this profile
+        let task = Task { [weak self] in
             guard let self = self else { return }
 
             // Check for cancellation before proceeding
@@ -173,7 +166,6 @@ class SessionManager {
                 // Check for cancellation
                 if Task.isCancelled { return }
 
-                print("SessionManager: Found matching cache file: \(cacheFilename)")
                 self.profileCacheFileMap[profileName] = cacheFilename
 
                 if let ssoToken = try? await self.readCredentialsFromCacheFile(cacheFilename) {
@@ -183,12 +175,13 @@ class SessionManager {
                     // Also read the SSO session token expiry
                     let ssoExpiry = SSOTokenManager.shared.getSSOTokenExpiry(forProfile: profileName)
 
-                    print("SessionManager: Found valid credentials in matched file, expires at: \(ssoToken.expiresAt), SSO token expires: \(String(describing: ssoExpiry))")
                     await MainActor.run {
-                        if !Task.isCancelled && self.isMonitoring && self.activeProfile == profileName {
-                            self.expiryDate = ssoToken.expiresAt
-                            self.ssoTokenExpiryDate = ssoExpiry
-                            self.lastHealthCheck = Date()
+                        if !Task.isCancelled && self.isMonitoring {
+                            if self.activeProfile == profileName {
+                                self.expiryDate = ssoToken.expiresAt
+                                self.ssoTokenExpiryDate = ssoExpiry
+                                self.lastHealthCheck = Date()
+                            }
                             self.activeSessions[profileName] = ProfileSession(
                                 profileName: profileName,
                                 roleCredExpiryDate: ssoToken.expiresAt,
@@ -215,12 +208,13 @@ class SessionManager {
 
                 let ssoExpiry = SSOTokenManager.shared.getSSOTokenExpiry(forProfile: profileName)
 
-                print("SessionManager: Found credentials with legacy approach, expires at: \(ssoToken.expiresAt), SSO token expires: \(String(describing: ssoExpiry))")
                 await MainActor.run {
-                    if !Task.isCancelled && self.isMonitoring && self.activeProfile == profileName {
-                        self.expiryDate = ssoToken.expiresAt
-                        self.ssoTokenExpiryDate = ssoExpiry
-                        self.lastHealthCheck = Date()
+                    if !Task.isCancelled && self.isMonitoring {
+                        if self.activeProfile == profileName {
+                            self.expiryDate = ssoToken.expiresAt
+                            self.ssoTokenExpiryDate = ssoExpiry
+                            self.lastHealthCheck = Date()
+                        }
                         self.activeSessions[profileName] = ProfileSession(
                             profileName: profileName,
                             roleCredExpiryDate: ssoToken.expiresAt,
@@ -239,7 +233,6 @@ class SessionManager {
             if Task.isCancelled { return }
 
             // If still no credentials, try to create them by running a command
-            print("SessionManager: No credentials found, attempting to refresh...")
             do {
                 _ = try await CommandRunner.shared.runCommand("aws", args: ["sts", "get-caller-identity", "--profile", profileName])
 
@@ -257,11 +250,12 @@ class SessionManager {
                         if Task.isCancelled { return }
 
                         let ssoExpiry = SSOTokenManager.shared.getSSOTokenExpiry(forProfile: profileName)
-                        print("SessionManager: Found credentials after refresh, expires at: \(ssoToken.expiresAt)")
                         await MainActor.run {
-                            if !Task.isCancelled && self.isMonitoring && self.activeProfile == profileName {
-                                self.expiryDate = ssoToken.expiresAt
-                                self.ssoTokenExpiryDate = ssoExpiry
+                            if !Task.isCancelled && self.isMonitoring {
+                                if self.activeProfile == profileName {
+                                    self.expiryDate = ssoToken.expiresAt
+                                    self.ssoTokenExpiryDate = ssoExpiry
+                                }
                                 self.activeSessions[profileName] = ProfileSession(
                                     profileName: profileName,
                                     roleCredExpiryDate: ssoToken.expiresAt,
@@ -287,11 +281,12 @@ class SessionManager {
                     if Task.isCancelled { return }
 
                     let ssoExpiry = SSOTokenManager.shared.getSSOTokenExpiry(forProfile: profileName)
-                    print("SessionManager: Found credentials after refresh (legacy), expires at: \(ssoToken.expiresAt)")
                     await MainActor.run {
-                        if !Task.isCancelled && self.isMonitoring && self.activeProfile == profileName {
-                            self.expiryDate = ssoToken.expiresAt
-                            self.ssoTokenExpiryDate = ssoExpiry
+                        if !Task.isCancelled && self.isMonitoring {
+                            if self.activeProfile == profileName {
+                                self.expiryDate = ssoToken.expiresAt
+                                self.ssoTokenExpiryDate = ssoExpiry
+                            }
                             self.activeSessions[profileName] = ProfileSession(
                                 profileName: profileName,
                                 roleCredExpiryDate: ssoToken.expiresAt,
@@ -308,20 +303,22 @@ class SessionManager {
 
                 // If we get here, no credentials were found
                 await MainActor.run {
-                    if !Task.isCancelled && self.isMonitoring && self.activeProfile == profileName {
+                    if !Task.isCancelled && self.isMonitoring {
                         self.expiryDate = nil
+                        self.activeSessions[profileName]?.status = .expired
                         self.onSessionUpdate?("Session: Not authenticated")
+                        self.onSessionsUpdated?(self.activeSessions)
                     }
                 }
             } catch {
-                // Only update if we're still monitoring the same profile
                 await MainActor.run {
-                    if !Task.isCancelled && self.isMonitoring && self.activeProfile == profileName {
+                    if !Task.isCancelled && self.isMonitoring {
                         let errorMessage = self.parseAWSError(error)
                         print("SessionManager: Failed to refresh credentials: \(errorMessage)")
                         self.expiryDate = nil
+                        self.activeSessions[profileName]?.status = .expired
+                        self.onSessionsUpdated?(self.activeSessions)
 
-                        // Provide more specific feedback based on the error
                         if errorMessage.contains("Token is expired") || errorMessage.contains("TokenExpired") {
                             self.onSessionUpdate?("Session: Token expired")
                             self.onTokenExpirationWarning?(profileName, 0)
@@ -334,6 +331,7 @@ class SessionManager {
                 }
             }
         }
+        monitoringTasks[profileName] = task
     }
 
     // MARK: - Error Parsing
@@ -387,7 +385,6 @@ class SessionManager {
 
         if timeUntilExpiry <= 0 {
             // Token has already expired
-            print("SessionManager: Token expired for profile \(profileName)")
             await MainActor.run {
                 self.onSessionUpdate?("Session: Expired")
                 self.onTokenExpirationWarning?(profileName, 0)
@@ -395,14 +392,12 @@ class SessionManager {
             return false
         } else if timeUntilExpiry <= tokenExpirationCriticalThreshold {
             // Token expires very soon - critical warning
-            print("SessionManager: Token expires in \(Int(timeUntilExpiry))s for profile \(profileName)")
             await MainActor.run {
                 self.onTokenExpirationWarning?(profileName, timeUntilExpiry)
             }
             return false
         } else if timeUntilExpiry <= tokenExpirationWarningThreshold {
             // Token expires soon - warning
-            print("SessionManager: Token expires in \(Int(timeUntilExpiry/60))min for profile \(profileName)")
             await MainActor.run {
                 self.onTokenExpirationWarning?(profileName, timeUntilExpiry)
             }
@@ -412,30 +407,25 @@ class SessionManager {
         return true // Token is still valid
     }
 
-    /// Attempts to refresh the SSO session for a profile
+    /// Attempts to refresh the SSO session for a profile.
+    /// First tries a silent refresh via sts get-caller-identity (uses refresh token).
+    /// Only falls back to aws sso login (browser) if the refresh token is dead.
     func refreshSSOSession(for profileName: String) async -> Bool {
-        print("SessionManager: Attempting to refresh SSO session for profile \(profileName)")
+        print("SessionManager: Attempting to refresh session for profile \(profileName)")
 
+        // Step 1: Try silent refresh — sts get-caller-identity forces CLI to use refresh token
         do {
-            // Clear any cached mapping for this profile to force fresh discovery
+            _ = try await CommandRunner.shared.runCommand("aws", args: ["sts", "get-caller-identity", "--profile", profileName])
+
+            // Re-read the refreshed cache files
             profileCacheFileMap.removeValue(forKey: profileName)
-            print("SessionManager: Cleared cached mapping for profile \(profileName)")
+            try await Task.sleep(nanoseconds: 500_000_000)
 
-            // Try SSO login to refresh the session
-            _ = try await CommandRunner.shared.runCommand("aws", args: ["sso", "login", "--profile", profileName])
-
-            // Give it a moment for the cache files to be updated
-            try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
-
-            // Force discovery of the newest cache file (don't use cached mapping)
             if let cacheFilename = await findMatchingCacheFile(forProfile: profileName),
                let token = try? await readCredentialsFromCacheFile(cacheFilename),
                token.expiresAt > Date() {
 
-                // Store the new mapping for future use
                 profileCacheFileMap[profileName] = cacheFilename
-                print("SessionManager: Updated cache mapping for \(profileName) -> \(cacheFilename)")
-
                 let ssoExpiry = SSOTokenManager.shared.getSSOTokenExpiry(forProfile: profileName)
 
                 await MainActor.run {
@@ -453,23 +443,68 @@ class SessionManager {
                     self.onSessionUpdate?("Session: Active")
                     self.onSessionsUpdated?(self.activeSessions)
                 }
-
-                print("SessionManager: Successfully refreshed SSO session, new expiry: \(token.expiresAt)")
                 return true
             }
 
-            print("SessionManager: SSO login succeeded but no valid credentials found")
-            return false
+            // sts succeeded but couldn't read updated creds — still counts as success
+            return true
 
         } catch {
-            print("SessionManager: Failed to refresh SSO session: \(error)")
+            let errorString = "\(error)"
+            print("SessionManager: Silent refresh failed for \(profileName): \(errorString)")
 
-            // If the SSO login failed, it might be because the session needs to be re-established
-            // This typically requires user intervention via browser
-            await MainActor.run {
-                self.onSessionUpdate?("Session: Refresh needed")
+            // If it's a token/auth error, the refresh token is dead — need browser login
+            let needsBrowser = errorString.contains("ExpiredToken") ||
+                errorString.contains("InvalidIdentityToken") ||
+                errorString.contains("The SSO session") ||
+                errorString.contains("Token has expired") ||
+                errorString.contains("UnauthorizedAccess") ||
+                errorString.contains("SSOTokenLoadError")
+
+            if !needsBrowser {
+                // Network error or transient issue — don't open browser
+                return false
             }
+        }
 
+        // Step 2: Refresh token is dead — fall back to browser login
+        print("SessionManager: Refresh token expired for \(profileName), falling back to browser login")
+        do {
+            _ = try await CommandRunner.shared.runCommand("aws", args: ["sso", "login", "--profile", profileName])
+            try await Task.sleep(nanoseconds: 1_000_000_000)
+
+            profileCacheFileMap.removeValue(forKey: profileName)
+            if let cacheFilename = await findMatchingCacheFile(forProfile: profileName),
+               let token = try? await readCredentialsFromCacheFile(cacheFilename),
+               token.expiresAt > Date() {
+
+                profileCacheFileMap[profileName] = cacheFilename
+                let ssoExpiry = SSOTokenManager.shared.getSSOTokenExpiry(forProfile: profileName)
+
+                await MainActor.run {
+                    self.expiryDate = token.expiresAt
+                    self.ssoTokenExpiryDate = ssoExpiry
+                    self.activeSessions[profileName] = ProfileSession(
+                        profileName: profileName,
+                        roleCredExpiryDate: token.expiresAt,
+                        ssoTokenExpiryDate: ssoExpiry,
+                        lastHealthCheck: Date(),
+                        status: .active,
+                        cacheFileName: cacheFilename
+                    )
+                    self.startSessionTimer()
+                    self.onSessionUpdate?("Session: Active")
+                    self.onSessionsUpdated?(self.activeSessions)
+                }
+                return true
+            }
+            return false
+        } catch {
+            print("SessionManager: Browser login also failed for \(profileName): \(error)")
+            await MainActor.run {
+                self.activeSessions[profileName]?.status = .expired
+                self.onSessionsUpdated?(self.activeSessions)
+            }
             return false
         }
     }
@@ -479,13 +514,11 @@ class SessionManager {
     /// Clears all cached file mappings to force fresh discovery
     func clearCacheFileMappings() {
         profileCacheFileMap.removeAll()
-        print("SessionManager: Cleared all cached file mappings")
     }
 
     /// Clears cache mapping for a specific profile
     func clearCacheFileMapping(for profileName: String) {
         profileCacheFileMap.removeValue(forKey: profileName)
-        print("SessionManager: Cleared cache mapping for profile \(profileName)")
     }
 
     // MARK: - Improved Cache File Finding
@@ -499,15 +532,12 @@ class SessionManager {
            FileManager.default.fileExists(atPath: cliCachePath.appendingPathComponent(knownCacheFile).path),
            let token = try? await readCredentialsFromCacheFile(knownCacheFile),
            token.expiresAt > Date() {
-            print("SessionManager: Using known valid mapping for \(profileName): \(knownCacheFile)")
             return knownCacheFile
         }
 
-        print("SessionManager: Looking for cache file matching profile: \(profileName)")
 
         // Get profile details for comparison
         guard let profile = ConfigManager.shared.getProfile(profileName) else {
-            print("SessionManager: Cannot find profile \(profileName) in config")
             return nil
         }
 
@@ -522,7 +552,6 @@ class SessionManager {
                 let expectedPath = cliCachePath.appendingPathComponent(expectedFilename)
 
                 if FileManager.default.fileExists(atPath: expectedPath.path) {
-                    print("SessionManager: Found exact hash match: \(expectedFilename)")
 
                     // Verify it has valid credentials before returning
                     if let token = try? await readCredentialsFromCacheFile(expectedFilename),
@@ -531,10 +560,8 @@ class SessionManager {
                         profileCacheFileMap[profileName] = expectedFilename
                         return expectedFilename
                     } else {
-                        print("SessionManager: Hash match found but credentials are expired or invalid")
                     }
                 } else {
-                    print("SessionManager: Computed hash file \(expectedFilename) doesn't exist")
                 }
             }
         }
@@ -553,7 +580,6 @@ class SessionManager {
                 return date1 > date2
             }
 
-            print("SessionManager: Examining \(sortedCacheFiles.count) cache files (sorted by modification date)")
 
             // For each file, try to read it and check for a strong match
             for file in sortedCacheFiles {
@@ -566,7 +592,6 @@ class SessionManager {
                         if let roleArn = json["RoleArn"] as? String {
                             let roleArnPattern = "arn:aws:iam::\(ssoProfile.accountId):role/\(ssoProfile.roleName)"
                             if roleArn == roleArnPattern {
-                                print("SessionManager: Found exact role ARN match in \(file.lastPathComponent)")
                                 return file.lastPathComponent
                             }
                         }
@@ -575,14 +600,12 @@ class SessionManager {
                         if let credentialProcess = json["CredentialProcess"] as? String,
                            credentialProcess.contains(ssoProfile.accountId),
                            credentialProcess.contains(ssoProfile.roleName) {
-                            print("SessionManager: Found matching SSO profile in credential process: \(file.lastPathComponent)")
                             return file.lastPathComponent
                         }
 
                         // Check for exact profile name in ConfigFile
                         if let configFile = json["ConfigFile"] as? String,
                            configFile.contains("[profile \(profileName)]") {
-                            print("SessionManager: Found exact profile name match in ConfigFile: \(file.lastPathComponent)")
                             return file.lastPathComponent
                         }
 
@@ -591,7 +614,6 @@ class SessionManager {
                         if fileContent.contains(ssoProfile.accountId) &&
                            fileContent.contains(ssoProfile.roleName) &&
                            fileContent.contains(ssoProfile.startUrl) {
-                            print("SessionManager: Found content match with all key components: \(file.lastPathComponent)")
                             return file.lastPathComponent
                         }
                     }
@@ -604,7 +626,6 @@ class SessionManager {
                             let roleArnParts = iamProfile.roleArn.split(separator: "/")
                             if let roleName = roleArnParts.last,
                                arn.contains(String(roleName)) {
-                                print("SessionManager: Found matching IAM role profile: \(file.lastPathComponent)")
                                 return file.lastPathComponent
                             }
                         }
@@ -612,7 +633,6 @@ class SessionManager {
                 }
             }
 
-            print("SessionManager: No definitive match found for \(profileName)")
             return nil
 
         } catch {
@@ -628,7 +648,6 @@ class SessionManager {
         let cacheFilePath = cliCachePath.appendingPathComponent(filename)
 
         if !FileManager.default.fileExists(atPath: cacheFilePath.path) {
-            print("SessionManager: Cache file no longer exists: \(filename)")
             return nil
         }
 
@@ -653,32 +672,26 @@ class SessionManager {
             // Try SSO format first
             if let ssoCredentials = try? decoder.decode(AWSCliCredentials.self, from: data) {
                 let expiresAt = ssoCredentials.credentials.expiration
-                print("SessionManager: Parsed SSO credentials, expires: \(expiresAt)")
 
                 if expiresAt > Date() {
                     return SSOToken(expiresAt: expiresAt)
                 } else {
-                    print("SessionManager: SSO credentials are expired")
                     return nil
                 }
             }
             // Then try IAM role format
             else if let iamCredentials = try? decoder.decode(IAMRoleCredentials.self, from: data) {
                 let expiresAt = iamCredentials.credentials.expiration
-                print("SessionManager: Parsed IAM credentials, expires: \(expiresAt)")
 
                 if expiresAt > Date() {
                     return SSOToken(expiresAt: expiresAt)
                 } else {
-                    print("SessionManager: IAM credentials are expired")
                     return nil
                 }
             }
 
-            print("SessionManager: Could not parse credentials from \(filename)")
             return nil
         } catch {
-            print("SessionManager: Error reading cache file: \(error)")
             return nil
         }
     }
@@ -714,7 +727,6 @@ class SessionManager {
     // Method to find CLI credentials for a profile (legacy approach)
     private func findCLICredentialsForProfile(_ profileName: String) async throws -> SSOToken? {
         if SessionManager.findingCredentials {
-            print("SessionManager: Avoiding recursive credential lookup")
             return nil
         }
 
@@ -727,7 +739,6 @@ class SessionManager {
         // Check for a known mapping first
         if let knownCacheFile = profileCacheFileMap[profileName] {
             let cacheFilePath = cliCachePath.appendingPathComponent(knownCacheFile)
-            print("SessionManager: Trying known cache file for \(profileName): \(knownCacheFile)")
 
             if FileManager.default.fileExists(atPath: cacheFilePath.path),
                let token = try? await readCredentialsFromCacheFile(knownCacheFile),
@@ -741,7 +752,6 @@ class SessionManager {
 
         // Get profile details for strong matching
         guard let profile = ConfigManager.shared.getProfile(profileName) else {
-            print("SessionManager: Cannot find profile details for \(profileName)")
             return nil
         }
 
@@ -756,7 +766,6 @@ class SessionManager {
                 let expectedPath = cliCachePath.appendingPathComponent(expectedFilename)
 
                 if FileManager.default.fileExists(atPath: expectedPath.path) {
-                    print("SessionManager: Found exact hash match in legacy lookup: \(expectedFilename)")
 
                     if let token = try? await readCredentialsFromCacheFile(expectedFilename),
                        token.expiresAt > Date() {
@@ -769,7 +778,6 @@ class SessionManager {
 
         // Get all cache files sorted by modification time
         guard let cacheFiles = try? FileManager.default.contentsOfDirectory(at: cliCachePath, includingPropertiesForKeys: [.contentModificationDateKey]) else {
-            print("SessionManager: Cannot read CLI cache directory")
             return nil
         }
 
@@ -784,7 +792,6 @@ class SessionManager {
 
         // Sort by modification date (newest first)
         let sortedFiles = filesWithDates.sorted { $0.1 > $1.1 }
-        print("SessionManager: Examining \(sortedFiles.count) sorted cache files")
 
         // IMPORTANT: We're removing the "use any valid credential" fallback!
         // Instead, we'll only match credentials that are likely for this profile
@@ -831,13 +838,11 @@ class SessionManager {
 
                         let expectedArn = "arn:aws:iam::\(ssoProfile.accountId):role/\(ssoProfile.roleName)"
                         if roleArnStr == expectedArn {
-                            print("SessionManager: Found exact ARN match in \(file.lastPathComponent)")
                             profileCacheFileMap[profileName] = file.lastPathComponent
                             return SSOToken(expiresAt: ssoCredentials.credentials.expiration)
                         }
                     } else {
                         // Still save this as a fallback, but with a warning
-                        print("SessionManager: Using SSO credentials with partial match in \(file.lastPathComponent)")
                         profileCacheFileMap[profileName] = file.lastPathComponent
                         return SSOToken(expiresAt: ssoCredentials.credentials.expiration)
                     }
@@ -853,18 +858,15 @@ class SessionManager {
                         let roleArnParts = iamProfile.roleArn.split(separator: "/")
 
                         if let roleName = roleArnParts.last, arn.contains(String(roleName)) {
-                            print("SessionManager: Found matching IAM role ARN in \(file.lastPathComponent)")
                             profileCacheFileMap[profileName] = file.lastPathComponent
                             return SSOToken(expiresAt: iamCredentials.credentials.expiration)
                         }
                     }
                 }
             } catch {
-                print("SessionManager: Error parsing \(file.lastPathComponent): \(error)")
             }
         }
 
-        print("SessionManager: No valid credentials found for \(profileName)")
         return nil
     }
 
@@ -1070,7 +1072,6 @@ class SessionManager {
 
         // Only start timer if we're in monitoring state
         guard isMonitoring else {
-            print("SessionManager: Not starting timer - monitoring is off")
             return
         }
 
@@ -1206,6 +1207,23 @@ class SessionManager {
             }
         }
 
+        // Proactive credential refresh: when role creds are within 15 min of expiry,
+        // run sts get-caller-identity to force the CLI to refresh them in the cache.
+        // This keeps ~/.aws/cli/cache/ fresh for non-CLI tools (Terraform, SDKs, etc.)
+        let proactiveRefreshThreshold: TimeInterval = 15 * 60
+        for (profileName, session) in activeSessions {
+            if let roleExpiry = session.roleCredExpiryDate,
+               roleExpiry.timeIntervalSinceNow > 0,
+               roleExpiry.timeIntervalSinceNow <= proactiveRefreshThreshold,
+               session.status == .active || session.status == .expiringSoon {
+                Task { [weak self] in
+                    guard let self = self, self.isMonitoring else { return }
+                    _ = try? await CommandRunner.shared.runCommand("aws", args: ["sts", "get-caller-identity", "--profile", profileName])
+                }
+                break // One refresh per tick
+            }
+        }
+
         // Update status for all active sessions
         var anyExpired = false
         for (profileName, session) in activeSessions {
@@ -1225,8 +1243,9 @@ class SessionManager {
             }
         }
 
-        // SSO token is the real session lifetime — role creds auto-refresh while SSO token is valid
-        let effectiveExpiry: Date? = ssoTokenExpiryDate ?? expiryDate
+        // Role creds reflect the permission set duration (actual usable session).
+        // SSO access token (60min) auto-refreshes via refresh token silently.
+        let effectiveExpiry: Date? = expiryDate ?? ssoTokenExpiryDate
 
         guard let expiration = effectiveExpiry else {
             handleExpiredSession()

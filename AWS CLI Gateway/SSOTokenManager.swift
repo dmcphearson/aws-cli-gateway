@@ -232,7 +232,6 @@ class SSOTokenManager {
     }
 
     func getTokenForProfile(_ profileName: String) async throws -> SSOToken? {
-        print("SSOTokenManager: Searching for token for profile: \(profileName)")
 
         // Try both SSO token and CLI token formats
         if let token = try await getSSOModeTokenForProfile(profileName) {
@@ -243,7 +242,6 @@ class SSOTokenManager {
             return token
         }
 
-        print("SSOTokenManager: No valid token found")
         return nil
     }
 
@@ -253,14 +251,12 @@ class SSOTokenManager {
         let cachePath = homeDir.appendingPathComponent(".aws/sso/cache")
 
         guard let cacheFiles = try? FileManager.default.contentsOfDirectory(at: cachePath, includingPropertiesForKeys: nil) else {
-            print("SSOTokenManager: Cannot access SSO cache directory")
             return nil
         }
 
         // Try to find the config file to get the SSO session name
         let ssoSessionName = try getSSOSessionNameForProfile(profileName)
 
-        print("SSOTokenManager: SSO session name for \(profileName): \(ssoSessionName ?? "nil")")
 
         for file in cacheFiles {
             // Only look at json files
@@ -297,7 +293,6 @@ class SSOTokenManager {
                     // Match by session name (from file content or filename hash)
                     if let sessionName = ssoSessionName {
                         if token.sessionName == sessionName || file.deletingPathExtension().lastPathComponent == sha1Hash(sessionName) {
-                            print("SSOTokenManager: Found matching SSO token by session name: \(sessionName)")
                             return token
                         }
                     } else if token.startUrl != nil && token.accessToken != nil && token.expiresAt > Date() {
@@ -305,13 +300,11 @@ class SSOTokenManager {
                         let profiles = ConfigManager.shared.getProfiles()
                         if let ssoProfile = profiles.first(where: { $0.name == profileName }) as? SSOProfile,
                            token.startUrl == ssoProfile.startUrl {
-                            print("SSOTokenManager: Found matching SSO token by startUrl for legacy profile")
                             return token
                         }
                     }
                 }
             } catch {
-                print("SSOTokenManager: Error decoding SSO token file \(file.lastPathComponent): \(error)")
                 continue
             }
         }
@@ -325,7 +318,6 @@ class SSOTokenManager {
         let cachePath = homeDir.appendingPathComponent(".aws/cli/cache")
 
         guard let cacheFiles = try? FileManager.default.contentsOfDirectory(at: cachePath, includingPropertiesForKeys: nil) else {
-            print("SSOTokenManager: Cannot access CLI cache directory")
             return nil
         }
 
@@ -336,7 +328,6 @@ class SSOTokenManager {
             do {
                 let data = try Data(contentsOf: file)
                 let jsonString = String(data: data, encoding: .utf8) ?? ""
-                print("SSOTokenManager: Examining CLI file: \(file.lastPathComponent), content preview: \(jsonString.prefix(100))")
 
                 // Try to decode using the CLI credentials format
                 let decoder = JSONDecoder()
@@ -357,7 +348,6 @@ class SSOTokenManager {
 
                 // Try to decode as CLI credentials
                 if let cliCredentials = try? decoder.decode(AWSCliCredentials.self, from: data) {
-                    print("SSOTokenManager: Successfully decoded CLI credentials, expires: \(cliCredentials.credentials.expiration)")
 
                     // Check if it's a valid token
                     if cliCredentials.credentials.expiration > Date() {
@@ -372,7 +362,6 @@ class SSOTokenManager {
                     }
                 }
             } catch {
-                print("SSOTokenManager: Error decoding CLI token file \(file.lastPathComponent): \(error)")
                 continue
             }
         }

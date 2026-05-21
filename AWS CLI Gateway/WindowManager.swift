@@ -83,28 +83,27 @@ class WindowManager {
         windows.removeValue(forKey: id)
     }
     
-    // MARK: - Show Add Profile Window
-    func showAddProfileWindow() {
+    // MARK: - Show Settings Window
+    func showSettingsWindow() {
         showWindow(
-            id: "addProfile",
-            title: "Add AWS Profile",
-            size: NSSize(width: 480, height: 320),
-            style: [.titled, .closable, .fullSizeContentView],
-            content: AddProfileView(onClose: {
-                self.closeWindow(id: "addProfile")
+            id: "settings",
+            title: "AWS CLI Gateway Settings",
+            size: NSSize(width: 580, height: 450),
+            style: [.titled, .closable, .resizable, .fullSizeContentView],
+            content: SettingsView(onClose: {
+                self.closeWindow(id: "settings")
             })
         )
     }
 
+    // MARK: - Show Add Profile Window
+    func showAddProfileWindow() {
+        showSettingsWindow()
+    }
+
     // MARK: - Show Profiles Window
     func showProfilesWindow() {
-        showWindow(
-            id: "profiles",
-            title: "AWS Profiles",
-            size: NSSize(width: 450, height: 400),
-            style: [.titled, .closable, .fullSizeContentView],
-            content: ProfilesView()
-        )
+        showSettingsWindow()
     }
 }
 

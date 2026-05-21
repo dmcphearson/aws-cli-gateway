@@ -344,7 +344,6 @@ class ConfigManager {
                     try FileManager.default.removeItem(at: fileURL)
                 }
 
-                print("Cleared AWS CLI cache")
             } else {
                 // Create the cache directory if it doesn't exist
                 try FileManager.default.createDirectory(
@@ -352,7 +351,6 @@ class ConfigManager {
                     withIntermediateDirectories: true,
                     attributes: nil
                 )
-                print("Created AWS CLI cache directory")
             }
         } catch {
             print("Error clearing AWS CLI cache: \(error)")
@@ -361,7 +359,6 @@ class ConfigManager {
 
     func fixAllProfileReferences() {
         updateIAMProfileSourceReferences()
-        print("Fixed all IAM profile references")
     }
 
     func updateIAMProfileSourceReferences() {
@@ -412,7 +409,6 @@ class ConfigManager {
                                 with: updatedBlock
                             )
 
-                            print("Updated IAM profile \(iamProfile.originalName) to use source_profile = \(linkedProfile.originalName)")
                         } else {
                             // If source_profile line doesn't exist, add it
                             let updatedBlock = profileBlock.trimmingCharacters(in: .whitespacesAndNewlines) +
@@ -423,7 +419,6 @@ class ConfigManager {
                                 with: updatedBlock
                             )
 
-                            print("Added source_profile = \(linkedProfile.originalName) to IAM profile \(iamProfile.originalName)")
                         }
                     }
                 }
@@ -435,12 +430,10 @@ class ConfigManager {
             do {
                 try updatedContent.write(to: configFile, atomically: true, encoding: .utf8)
                 try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: configFile.path)
-                print("Successfully updated IAM profile source references in config file")
             } catch {
                 print("Error writing updated config file: \(error)")
             }
         } else {
-            print("No changes needed to IAM profile source references")
         }
     }
     
@@ -665,7 +658,6 @@ class ConfigManager {
             for file in cliCacheContents where file.hasSuffix(".json") {
                 let filePath = URL(fileURLWithPath: cliCachePath).appendingPathComponent(file).path
                 try FileManager.default.removeItem(atPath: filePath)
-                print("Deleted CLI cache file: \(file)")
             }
 
             // Clear SSO cache
@@ -674,7 +666,6 @@ class ConfigManager {
                 for file in ssoCacheContents where file.hasSuffix(".json") {
                     let filePath = URL(fileURLWithPath: ssoCachePath).appendingPathComponent(file).path
                     try FileManager.default.removeItem(atPath: filePath)
-                    print("Deleted SSO cache file: \(file)")
                 }
             }
 
