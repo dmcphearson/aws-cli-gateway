@@ -219,8 +219,9 @@ class MenuBarManager: NSObject, NSMenuDelegate {
         }
     }
 
-    // Per-profile text fields for live countdown updates (avoid full menu rebuild every second)
+    // Per-profile UI elements for live updates (avoid full menu rebuild every second)
     private var sessionTimeFields: [String: NSTextField] = [:]
+    private var sessionDotViews: [String: NSView] = [:]
 
     // Notification cooldown: tracks last notification time per profile+threshold to prevent duplicates
     private var lastNotificationSent: [String: Date] = [:]
@@ -319,20 +320,23 @@ class MenuBarManager: NSObject, NSMenuDelegate {
     func setup() {
         Task { @MainActor in
             statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-            
+
             if let button = statusItem?.button {
                 button.image = NSImage(named: "cloud-lock")
                 button.image?.isTemplate = true
             }
-            
+
             mainMenu = NSMenu()
             mainMenu.delegate = self
             statusItem?.menu = mainMenu
-            
+
             setupNotifications()
-            
+
+            // Restore sessions for previously connected profiles that still have valid tokens
+            restoreActiveSessions()
+
             buildMenu()
-            
+
             SessionManager.shared.onSessionUpdate = { [weak self] timeString in
                 DispatchQueue.main.async {
                     if let container = self?.sessionMenuItem?.view,
@@ -347,6 +351,26 @@ class MenuBarManager: NSObject, NSMenuDelegate {
                 DispatchQueue.main.async {
                     self?.handleTokenExpirationWarning(profileName: profileName, timeUntilExpiry: timeUntilExpiry)
                 }
+            }
+        }
+    }
+
+    /// On app launch, check connected profiles for valid SSO tokens and resume monitoring
+    @MainActor
+    private func restoreActiveSessions() {
+        let connectedProfiles = ProfileHistoryManager.shared.getConnectedProfiles()
+        for profileInfo in connectedProfiles {
+            let profileName = profileInfo.originalName
+            // Check if the SSO token is still valid
+            if let ssoExpiry = SSOTokenManager.shared.getSSOTokenExpiry(forProfile: profileName),
+               ssoExpiry > Date() {
+                print("MenuBarManager: Restoring session for \(profileName), SSO token expires \(ssoExpiry)")
+                activeProfile = activeProfile ?? profileName
+                SessionManager.shared.startMonitoring(for: profileName)
+            } else {
+                // Token expired — disconnect this profile
+                print("MenuBarManager: Token expired for \(profileName), disconnecting")
+                ProfileHistoryManager.shared.setProfileDisconnected(profileName)
             }
         }
     }
@@ -483,8 +507,9 @@ class MenuBarManager: NSObject, NSMenuDelegate {
             headerItem.isEnabled = false
             mainMenu.addItem(headerItem)
 
-            // Clear old text field references
+            // Clear old UI references
             sessionTimeFields.removeAll()
+            sessionDotViews.removeAll()
 
             // Calculate active session row width to fit: dot + name + timer + refresh + disconnect
             let sessionRowWidth = max(menuWidth, 280)
@@ -518,6 +543,7 @@ class MenuBarManager: NSObject, NSMenuDelegate {
                 default: dotView.layer?.backgroundColor = NSColor.systemGray.cgColor
                 }
                 rowView.addSubview(dotView)
+                sessionDotViews[profileName] = dotView
 
                 // Profile name — fills space between dot and timer
                 let nameX: CGFloat = 24
@@ -569,12 +595,26 @@ class MenuBarManager: NSObject, NSMenuDelegate {
                 mainMenu.addItem(menuItem)
             }
 
-            // Set up the multi-session update callback (updates text fields without rebuilding menu)
+            // Set up the multi-session update callback (updates text + dot color without rebuilding menu)
             SessionManager.shared.onSessionsUpdated = { [weak self] sessions in
                 DispatchQueue.main.async {
                     guard let self = self else { return }
                     for (profileName, session) in sessions {
                         self.sessionTimeFields[profileName]?.stringValue = session.formattedTimeRemaining
+
+                        // Update dot color based on current status
+                        if let dotView = self.sessionDotViews[profileName] {
+                            switch session.status {
+                            case .active:
+                                dotView.layer?.backgroundColor = NSColor.systemGreen.cgColor
+                            case .expiringSoon:
+                                dotView.layer?.backgroundColor = NSColor.systemOrange.cgColor
+                            case .expired:
+                                dotView.layer?.backgroundColor = NSColor.systemRed.cgColor
+                            default:
+                                dotView.layer?.backgroundColor = NSColor.systemGray.cgColor
+                            }
+                        }
                     }
                 }
             }

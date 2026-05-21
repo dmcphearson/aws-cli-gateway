@@ -8,13 +8,14 @@ struct ProfileSession {
     var status: ProfileSessionStatus
     var cacheFileName: String?
 
+    /// The real session lifetime is the SSO token — role credentials auto-refresh
+    /// as long as the SSO token is valid. Only fall back to role cred expiry if
+    /// we can't determine the SSO token expiry.
     var effectiveExpiry: Date? {
-        switch (roleCredExpiryDate, ssoTokenExpiryDate) {
-        case let (role?, sso?): return min(role, sso)
-        case let (role?, nil): return role
-        case let (nil, sso?): return sso
-        case (nil, nil): return nil
+        if let sso = ssoTokenExpiryDate {
+            return sso
         }
+        return roleCredExpiryDate
     }
 
     var timeRemaining: TimeInterval {
