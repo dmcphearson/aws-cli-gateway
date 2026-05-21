@@ -18,7 +18,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
         
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
             if granted {
-                print("Notification authorization granted")
             }
         }
 
@@ -65,11 +64,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     // MARK: - Setup
     
     private func setupNotifications() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
-            if let error = error {
-                print("Notification authorization error: \(error)")
-            }
-        }
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
     
     private func setupSessionObservers() {
@@ -103,16 +98,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     }
     
     @objc private func handleSessionTimeUpdate(_ notification: Notification) {
-        guard let remaining = notification.userInfo?[Constants.NotificationKeys.timeRemaining] as? TimeInterval else { return }
-        let hours = Int(remaining) / 3600
-        let minutes = (Int(remaining) % 3600) / 60
-        let seconds = Int(remaining) % 60
-        print("AppDelegate sees session time updated: \(hours):\(minutes):\(seconds)")
+        // Handled by MenuBarManager's live update callback
     }
     
     @objc private func handleProfileConnected(_ notification: Notification) {
         if let profile = notification.userInfo?[Constants.NotificationKeys.profile] as? SSOProfile {
-            print("AppDelegate sees profile connected: \(profile.name)")
         }
     }
     

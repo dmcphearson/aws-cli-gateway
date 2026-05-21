@@ -215,12 +215,12 @@ esac
 
     func clearAWSCache() throws -> String {
         let homeDir = FileManager.default.homeDirectoryForCurrentUser.path
-        let cacheDir = "\(homeDir)/.aws/cli/cache"
+        let cliCacheDir = "\(homeDir)/.aws/cli/cache"
+        let ssoCacheDir = "\(homeDir)/.aws/sso/cache"
 
-        // Delete cache directory
         let task = Process()
         task.launchPath = "/bin/bash"
-        task.arguments = ["-c", "rm -rf '\(cacheDir)'"]
+        task.arguments = ["-c", "rm -rf '\(cliCacheDir)' && rm -rf '\(ssoCacheDir)'"]
 
         let errorPipe = Pipe()
         task.standardError = errorPipe
@@ -235,6 +235,6 @@ esac
                 userInfo: [NSLocalizedDescriptionKey: "Cache clearing failed: \(errorOutput)"])
         }
 
-        return "AWS CLI cache has been cleared successfully."
+        return "AWS CLI and SSO caches have been cleared. All sessions are now disconnected."
     }
 }

@@ -83,7 +83,6 @@ class ProfileHistoryManager {
     /// Connects a profile (additive — does not disconnect others). Respects the 5-profile cap.
     func setConnectedProfile(_ profileName: String) {
         guard canConnectProfile() || profiles.first(where: { $0.originalName == profileName })?.isConnected == true else {
-            print("Warning: Cannot connect \(profileName) — max \(Self.maxConcurrentProfiles) profiles reached")
             return
         }
 
@@ -92,7 +91,6 @@ class ProfileHistoryManager {
         } else if let index = profiles.firstIndex(where: { $0.id == profileName }) {
             profiles[index].isConnected = true
         } else {
-            print("Warning: Tried to set non-existent profile \(profileName) as connected")
             return
         }
 
@@ -102,7 +100,6 @@ class ProfileHistoryManager {
     /// Connects a profile by ID (additive)
     func setConnectedProfileById(_ id: String) {
         guard canConnectProfile() || profiles.first(where: { $0.id == id })?.isConnected == true else {
-            print("Warning: Cannot connect profile — max \(Self.maxConcurrentProfiles) profiles reached")
             return
         }
 
@@ -265,7 +262,6 @@ class ProfileHistoryManager {
             try data.write(to: historyFile)
             isDirty = false
             forceNextSave = false
-            print("Saved profile history: \(profiles)")
         } catch {
             print("Error saving profile history: \(error)")
         }
@@ -273,7 +269,6 @@ class ProfileHistoryManager {
 
     private func loadProfiles() {
         guard FileManager.default.fileExists(atPath: historyFile.path) else {
-            print("Profile history file does not exist yet")
             return
         }
 
@@ -321,7 +316,6 @@ class ProfileHistoryManager {
                 }
             }
 
-            print("Loaded profiles: \(profiles)")
         } catch {
             print("Error loading profile history: \(error)")
             profiles = []
