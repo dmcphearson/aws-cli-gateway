@@ -1,40 +1,20 @@
 import SwiftUI
 
-enum SettingsSection: String, CaseIterable, Identifiable {
-    case profiles = "Profiles"
-    case tools = "Tools"
-
-    var id: String { rawValue }
-
-    var icon: String {
-        switch self {
-        case .profiles: return "person.2"
-        case .tools: return "wrench.and.screwdriver"
-        }
-    }
-}
-
 struct SettingsView: View {
     let onClose: () -> Void
-    @State private var selectedSection: SettingsSection = .profiles
+    @State private var selectedTab = 0
 
     var body: some View {
-        NavigationSplitView {
-            List(SettingsSection.allCases, selection: $selectedSection) { section in
-                Label(section.rawValue, systemImage: section.icon)
-                    .tag(section)
-            }
-            .listStyle(.sidebar)
-            .navigationSplitViewColumnWidth(min: 150, ideal: 170, max: 200)
-        } detail: {
-            switch selectedSection {
-            case .profiles:
-                ProfilesSection(onClose: onClose)
-            case .tools:
-                ToolsSection()
-            }
+        TabView(selection: $selectedTab) {
+            ProfilesSection(onClose: onClose)
+                .tabItem { Label("Profiles", systemImage: "person.2") }
+                .tag(0)
+
+            ToolsSection()
+                .tabItem { Label("Tools", systemImage: "wrench.and.screwdriver") }
+                .tag(1)
         }
-        .frame(minWidth: 650, minHeight: 450)
+        .frame(minWidth: 520, minHeight: 420)
     }
 }
 
@@ -60,6 +40,8 @@ struct ProfilesSection: View {
     @State private var viewState: ProfileViewState = .list
     @State private var configText: String = ""
     @State private var configSaveMessage: String?
+    @State private var profileToDelete: String?
+    @State private var showDeleteConfirmation = false
 
     private var configPath: String {
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".aws/config").path
@@ -118,7 +100,7 @@ struct ProfilesSection: View {
                 }
             }
             .padding(.horizontal, 20)
-            .padding(.top, 16)
+            .padding(.top, 20)
             .padding(.bottom, 12)
 
             Divider()
@@ -154,8 +136,9 @@ struct ProfilesSection: View {
                         .tag(profile.name)
                 }
                 .onDelete { indexSet in
-                    for index in indexSet {
-                        deleteProfile(profiles[index].name)
+                    if let index = indexSet.first {
+                        profileToDelete = profiles[index].name
+                        showDeleteConfirmation = true
                     }
                 }
             }
@@ -163,12 +146,19 @@ struct ProfilesSection: View {
 
             Divider()
 
-            HStack {
-                Button(action: { deleteSelected() }) {
-                    Image(systemName: "minus")
+            HStack(spacing: 12) {
+                Button(action: {
+                    if let name = selectedProfile {
+                        profileToDelete = name
+                        showDeleteConfirmation = true
+                    }
+                }) {
+                    Image(systemName: "trash")
+                        .font(.system(size: 12))
                 }
                 .buttonStyle(.borderless)
                 .disabled(selectedProfile == nil)
+                .help("Delete selected profile")
 
                 Spacer()
 
@@ -177,7 +167,18 @@ struct ProfilesSection: View {
                     .foregroundColor(.secondary)
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .padding(.vertical, 10)
+        }
+        .alert("Delete Profile", isPresented: $showDeleteConfirmation) {
+            Button("Cancel", role: .cancel) { profileToDelete = nil }
+            Button("Delete", role: .destructive) {
+                if let name = profileToDelete {
+                    deleteProfile(name)
+                    profileToDelete = nil
+                }
+            }
+        } message: {
+            Text("Are you sure you want to delete '\(profileToDelete ?? "")'? This will remove it from your AWS config.")
         }
     }
 
