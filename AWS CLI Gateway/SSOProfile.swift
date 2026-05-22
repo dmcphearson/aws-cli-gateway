@@ -91,10 +91,6 @@ extension SSOProfile {
     ]
 }
 
-// MARK: - AWS Permission Sets
-extension SSOProfile {
-}
-
 // MARK: - Preview Helper
 extension SSOProfile {
     static var preview: SSOProfile {
