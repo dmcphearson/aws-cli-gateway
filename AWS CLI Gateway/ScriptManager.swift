@@ -20,7 +20,7 @@ AWS_CMD="/usr/local/bin/aws"
 # Debug function - call this when troubleshooting
 function debug_info() {
     echo "=== DEBUG INFO ==="
-    echo "Script version: 1.2.0"
+    echo "Script version: 1.3.0"
     echo "Profile history path: $PROFILE_HISTORY"
     echo "Profile history exists: $([ -f "$PROFILE_HISTORY" ] && echo "Yes" || echo "No")"
     if [ -f "$PROFILE_HISTORY" ]; then
@@ -54,43 +54,51 @@ function check_requirements() {
 }
 
 # Get active profile using Python for proper JSON parsing
+# If multiple profiles are connected, prompts the user to select one
 function get_active_profile() {
-    # Use Python to properly parse the JSON and extract the connected profile
-    PROFILE=$(python3 -c "
+    RESULT=$(python3 -c "
 import json, sys
 try:
     with open('$PROFILE_HISTORY', 'r') as f:
         data = json.load(f)
 
-    # First try to find connected profile
-    connected_profile = None
-    for profile in data:
-        if profile.get('isConnected', False) == True:
-            connected_profile = profile.get('originalName')
-            break
+    connected = [(p.get('originalName'), p.get('profileType', 'sso')) for p in data if p.get('isConnected', False)]
 
-    # If no connected profile, try default
-    if not connected_profile:
-        for profile in data:
-            if profile.get('isDefault', False) == True:
-                connected_profile = profile.get('originalName')
-                break
-
-    # Last resort - first profile
-    if not connected_profile and data:
-        connected_profile = data[0].get('originalName')
-
-    if connected_profile:
-        print(connected_profile)
-    else:
-        sys.stderr.write('Error: No profiles found in $PROFILE_HISTORY\\n')
+    if len(connected) == 0:
+        sys.stderr.write('Error: No active sessions. Connect a profile in AWS CLI Gateway first.\\n')
         sys.exit(1)
+    elif len(connected) == 1:
+        print(connected[0][0])
+    else:
+        sys.stderr.write('Multiple active profiles:\\n')
+        for i, (name, ptype) in enumerate(connected, 1):
+            sys.stderr.write(f'  {i}) {name} ({ptype})\\n')
+        sys.stderr.write(f'Select profile [1-{len(connected)}]: ')
+        sys.stderr.flush()
+        print('PROMPT:' + json.dumps([name for name, _ in connected]))
 except Exception as e:
     sys.stderr.write(f'Error reading profile: {str(e)}\\n')
     sys.exit(1)
 ")
 
-    echo "$PROFILE"
+    if [[ "$RESULT" == PROMPT:* ]]; then
+        # Multiple profiles - read user selection
+        local NAMES="${RESULT#PROMPT:}"
+        local COUNT=$(python3 -c "import json; print(len(json.loads('$NAMES')))")
+
+        read -r SELECTION </dev/tty
+
+        # Validate input is a number in range
+        if ! [[ "$SELECTION" =~ ^[0-9]+$ ]] || [ "$SELECTION" -lt 1 ] || [ "$SELECTION" -gt "$COUNT" ]; then
+            echo "Invalid selection." >&2
+            exit 1
+        fi
+
+        PROFILE=$(python3 -c "import json; print(json.loads('$NAMES')[$SELECTION - 1])")
+        echo "$PROFILE"
+    else
+        echo "$RESULT"
+    fi
 }
 
 # List all profiles of a specific type
@@ -137,6 +145,9 @@ function show_help() {
     echo ""
     echo "Any command not recognized as a gateway command will be passed to the AWS CLI"
     echo "with the current profile automatically added."
+    echo ""
+    echo "When multiple profiles are connected, gateway will prompt you to select one."
+    echo "If only one profile is active, it is used automatically."
 }
 
 # Main execution
