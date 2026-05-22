@@ -2,57 +2,29 @@ name: Xcode - Build and Analyze
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [main]
   pull_request:
-    branches: [ "main" ]
+    branches: [main]
 
 jobs:
   build:
     name: Build and analyse default scheme using xcodebuild command
-    runs-on: macos-14  # Using macOS Sonoma with Xcode 15.x
+    runs-on: macos-15
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: List available Xcode versions
-        run: ls -la /Applications/ | grep Xcode
-
-      - name: Select latest Xcode version
+      - name: Select Xcode
         run: |
-          LATEST_XCODE=$(ls -1 /Applications/ | grep "Xcode_" | sort -V | tail -n 1)
-          if [ -n "$LATEST_XCODE" ]; then
-            echo "Using Xcode: $LATEST_XCODE"
-            sudo xcode-select -s /Applications/$LATEST_XCODE
-          else
-            echo "Using default Xcode installation"
-          fi
+          sudo xcode-select -s /Applications/Xcode_16.2.app || sudo xcode-select -s $(ls -d /Applications/Xcode*.app | sort -V | tail -1)
           xcodebuild -version
 
-      - name: Set Default Scheme
-        run: |
-          scheme_list=$(xcodebuild -list -json | tr -d "\n")
-          default=$(echo $scheme_list | ruby -e "require 'json'; puts JSON.parse(STDIN.gets)['project']['targets'][0]")
-          echo $default | cat >default
-          echo Using default scheme: $default
-
       - name: Build
-        env:
-          scheme: ${{ 'default' }}
         run: |
-          if [ $scheme = default ]; then scheme=$(cat default); fi
-
-          # Determine if we're working with workspace or project
-          if [ "`ls -A | grep -i \\.xcworkspace\$`" ]; then 
-            filetype_parameter="workspace" 
-            file_to_build="`ls -A | grep -i \\.xcworkspace\$`"
-          else 
-            filetype_parameter="project" 
-            file_to_build="`ls -A | grep -i \\.xcodeproj\$`"
-          fi
-
-          file_to_build=`echo $file_to_build | awk '{$1=$1;print}'`
-          echo "Building $filetype_parameter: $file_to_build with scheme: $scheme"
-
-          # Run xcodebuild with analytics and pipe through xcpretty
-          xcodebuild clean build analyze -scheme "$scheme" -"$filetype_parameter" "$file_to_build" | xcpretty && exit ${PIPESTATUS[0]}
+          xcodebuild clean build analyze \
+            -project "AWS CLI Gateway.xcodeproj" \
+            -scheme "AWS CLI Gateway" \
+            -configuration Release \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_ALLOWED=NO | xcpretty && exit ${PIPESTATUS[0]}
