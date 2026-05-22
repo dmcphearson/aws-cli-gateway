@@ -72,25 +72,10 @@ struct SSOToken: Codable {
         region = try container.decodeIfPresent(String.self, forKey: .region)
         accessToken = try container.decodeIfPresent(String.self, forKey: .accessToken)
 
-        // Try to decode expiresAt
-        if let expiresAtString = try? container.decode(String.self, forKey: .expiresAt) {
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-
-            if let date = formatter.date(from: expiresAtString) {
-                expiresAt = date
-            } else {
-                // Try with just internet date time
-                formatter.formatOptions = [.withInternetDateTime]
-                if let date = formatter.date(from: expiresAtString) {
-                    expiresAt = date
-                } else {
-                    throw DecodingError.dataCorruptedError(forKey: .expiresAt, in: container,
-                                                         debugDescription: "Date string does not match expected format")
-                }
-            }
+        if let expiresAtString = try? container.decode(String.self, forKey: .expiresAt),
+           let date = SSOTokenManager.parseISO8601(expiresAtString) {
+            expiresAt = date
         } else {
-            // If we can't find expiresAt, just use a default (will be replaced)
             expiresAt = Date()
         }
 
@@ -105,6 +90,25 @@ class SSOTokenManager {
     static let shared = SSOTokenManager()
 
     private init() {}
+
+    static func parseISO8601(_ string: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: string) { return date }
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: string)
+    }
+
+    private static var iso8601DecodingStrategy: JSONDecoder.DateDecodingStrategy {
+        .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let dateString = try container.decode(String.self)
+            guard let date = parseISO8601(dateString) else {
+                throw DecodingError.dataCorruptedError(in: container, debugDescription: "Cannot decode date: \(dateString)")
+            }
+            return date
+        }
+    }
 
     // Model for token info
     struct TokenInfo {
@@ -132,7 +136,6 @@ class SSOTokenManager {
         return nil
     }
 
-    /// Returns the SSO token expiry date for a given profile, or nil if not found/expired.
     func getSSOTokenExpiry(forProfile profileName: String) -> Date? {
         guard let tokenFilePath = findTokenFile(forProfile: profileName),
               let tokenData = try? Data(contentsOf: tokenFilePath),
@@ -140,49 +143,21 @@ class SSOTokenManager {
               let expiresAtString = tokenDict["expiresAt"] as? String else {
             return nil
         }
-
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = formatter.date(from: expiresAtString) {
-            return date
-        }
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter.date(from: expiresAtString)
+        return Self.parseISO8601(expiresAtString)
     }
 
-    // Get token info from SSO cache
     private func getTokenInfoFromSSOCache(startUrl: String, region: String) -> TokenInfo? {
         guard let tokenFilePath = findTokenFileByContent(startUrl: startUrl, region: region),
               let tokenData = try? Data(contentsOf: tokenFilePath),
               let tokenDict = try? JSONSerialization.jsonObject(with: tokenData) as? [String: Any],
-              let expiresAtString = tokenDict["expiresAt"] as? String else {
+              let expiresAtString = tokenDict["expiresAt"] as? String,
+              let expiresAt = Self.parseISO8601(expiresAtString) else {
             return nil
         }
-
-        // Parse the expiration date
-        let dateFormatter = ISO8601DateFormatter()
-        dateFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-
-        guard let expiresAt = dateFormatter.date(from: expiresAtString) else {
-            dateFormatter.formatOptions = [.withInternetDateTime]
-            guard let fallbackDate = dateFormatter.date(from: expiresAtString) else {
-                return nil
-            }
-            let remainingTime = fallbackDate.timeIntervalSince(Date())
-            return TokenInfo(isValid: remainingTime > 0, expiresAt: fallbackDate, remainingTime: remainingTime)
-        }
-
         let remainingTime = expiresAt.timeIntervalSince(Date())
-        let isValid = remainingTime > 0
-
-        return TokenInfo(
-            isValid: isValid,
-            expiresAt: expiresAt,
-            remainingTime: remainingTime
-        )
+        return TokenInfo(isValid: remainingTime > 0, expiresAt: expiresAt, remainingTime: remainingTime)
     }
 
-    // Get token info from CLI cache
     private func getTokenInfoFromCLICache() -> TokenInfo? {
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
         let cachePath = homeDir.appendingPathComponent(".aws/cli/cache")
@@ -191,41 +166,17 @@ class SSOTokenManager {
             return nil
         }
 
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = Self.iso8601DecodingStrategy
+
         for file in cacheFiles where file.pathExtension == "json" {
-            do {
-                let data = try Data(contentsOf: file)
-                let decoder = JSONDecoder()
-
-                decoder.dateDecodingStrategy = .custom { decoder in
-                    let container = try decoder.singleValueContainer()
-                    let dateString = try container.decode(String.self)
-
-                    let formatter = ISO8601DateFormatter()
-                    formatter.formatOptions = [.withInternetDateTime]
-
-                    if let date = formatter.date(from: dateString) {
-                        return date
-                    }
-
-                    throw DecodingError.dataCorruptedError(in: container, debugDescription: "Cannot decode date")
-                }
-
-                // Try to decode as CLI credentials
-                if let cliCredentials = try? decoder.decode(AWSCliCredentials.self, from: data) {
-                    let expiresAt = cliCredentials.credentials.expiration
-                    let remainingTime = expiresAt.timeIntervalSince(Date())
-                    let isValid = remainingTime > 0
-
-                    return TokenInfo(
-                        isValid: isValid,
-                        expiresAt: expiresAt,
-                        remainingTime: remainingTime
-                    )
-                }
-            } catch {
-                // Just skip this file if it can't be parsed
+            guard let data = try? Data(contentsOf: file),
+                  let cliCredentials = try? decoder.decode(AWSCliCredentials.self, from: data) else {
                 continue
             }
+            let expiresAt = cliCredentials.credentials.expiration
+            let remainingTime = expiresAt.timeIntervalSince(Date())
+            return TokenInfo(isValid: remainingTime > 0, expiresAt: expiresAt, remainingTime: remainingTime)
         }
 
         return nil
@@ -258,37 +209,12 @@ class SSOTokenManager {
         let ssoSessionName = try getSSOSessionNameForProfile(profileName)
 
 
-        for file in cacheFiles {
-            // Only look at json files
-            guard file.pathExtension == "json" else { continue }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = Self.iso8601DecodingStrategy
 
+        for file in cacheFiles where file.pathExtension == "json" {
             do {
                 let data = try Data(contentsOf: file)
-
-                // Create a decoder with appropriate date decoding strategy
-                let decoder = JSONDecoder()
-
-                decoder.dateDecodingStrategy = .custom { decoder in
-                    let container = try decoder.singleValueContainer()
-                    let dateString = try container.decode(String.self)
-
-                    // Create the formatter inside the closure
-                    let formatter = ISO8601DateFormatter()
-                    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-
-                    if let date = formatter.date(from: dateString) {
-                        return date
-                    }
-
-                    // Try with just internet date time
-                    formatter.formatOptions = [.withInternetDateTime]
-                    if let date = formatter.date(from: dateString) {
-                        return date
-                    }
-
-                    throw DecodingError.dataCorruptedError(in: container, debugDescription: "Cannot decode date string \(dateString)")
-                }
-
                 if let token = try? decoder.decode(SSOToken.self, from: data) {
                     // Match by session name (from file content or filename hash)
                     if let sessionName = ssoSessionName {
@@ -321,49 +247,16 @@ class SSOTokenManager {
             return nil
         }
 
-        for file in cacheFiles {
-            // Only look at json files and skip .DS_Store
-            guard file.pathExtension == "json" && file.lastPathComponent != ".DS_Store" else { continue }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = Self.iso8601DecodingStrategy
 
-            do {
-                let data = try Data(contentsOf: file)
-                let jsonString = String(data: data, encoding: .utf8) ?? ""
-
-                // Try to decode using the CLI credentials format
-                let decoder = JSONDecoder()
-
-                decoder.dateDecodingStrategy = .custom { decoder in
-                    let container = try decoder.singleValueContainer()
-                    let dateString = try container.decode(String.self)
-
-                    let formatter = ISO8601DateFormatter()
-                    formatter.formatOptions = [.withInternetDateTime]
-
-                    if let date = formatter.date(from: dateString) {
-                        return date
-                    }
-
-                    throw DecodingError.dataCorruptedError(in: container, debugDescription: "Cannot decode date")
-                }
-
-                // Try to decode as CLI credentials
-                if let cliCredentials = try? decoder.decode(AWSCliCredentials.self, from: data) {
-
-                    // Check if it's a valid token
-                    if cliCredentials.credentials.expiration > Date() {
-                        // Convert to our SSOToken format
-                        return SSOToken(
-                            expiresAt: cliCredentials.credentials.expiration,
-                            startUrl: nil,
-                            region: nil,
-                            accessToken: nil,
-                            sessionName: nil
-                        )
-                    }
-                }
-            } catch {
+        for file in cacheFiles where file.pathExtension == "json" && file.lastPathComponent != ".DS_Store" {
+            guard let data = try? Data(contentsOf: file),
+                  let cliCredentials = try? decoder.decode(AWSCliCredentials.self, from: data),
+                  cliCredentials.credentials.expiration > Date() else {
                 continue
             }
+            return SSOToken(expiresAt: cliCredentials.credentials.expiration)
         }
 
         return nil
