@@ -1,85 +1,72 @@
 # AWS CLI Gateway
 
 <p align="center">
-    <img src="AWS CLI Gateway/Assets.xcassets/AppIcon.appiconset/aws-cli-512.png">
+    <img src="AWS CLI Gateway/Assets.xcassets/AppIcon.appiconset/aws-cli-gateway-app-icon-iOS-Default-512x512@1x.png" width="128">
 </p>
 
 ## Overview
 
-A menu bar macOS application that simplifies the management of AWS profiles and sessions, with a focus on AWS SSO.
-
-## What's New in Version 0.4.5
-
-- **Enhanced UX**: Star buttons now only appear when there's an active session, preventing confusion at startup
-- **Improved Session Management**: Fixed token synchronization issues that caused premature expiration errors
-- **Dynamic Menu Layout**: Menu width and spacing now adjust intelligently based on current session state
-- **Better Error Handling**: Resolved infinite loop issues when refreshing expired SSO sessions
-- **Visual Polish**: Added proper spacing and padding for a more professional appearance
-
-### [View the previous release notes](Release%20Notes.md)
+A macOS menu bar application for managing AWS SSO profiles and sessions. Monitor multiple concurrent sessions, get proactive expiry warnings, and run AWS CLI commands without manually specifying profiles.
 
 ## Features
 
-AWS CLI Gateway offers a comprehensive set of features to streamline your AWS profile management:
+### Multi-Profile Session Management
+- Monitor up to 5 concurrent AWS SSO sessions
+- Per-profile countdown timers with automatic refresh
+- Proactive credential refresh 15 minutes before expiry
+- Health checks via `sts get-caller-identity` every 5 minutes
+- Session restore on app launch
 
-1. **AWS Profile Management**
-   - **SSO Profiles**: Create and manage AWS Single Sign-On profiles with support for permission sets
-   - **IAM Role Profiles**: Configure profiles that assume IAM roles from source profiles
-   - **Connected Profile**: Simply click the star next to any profile to connect to it
+### Interactive Menu Bar Panel
+- Floating NSPanel with SwiftUI interface (replaces legacy NSMenu)
+- Expandable profile detail showing region, account, and expiry info
+- One-click connect, disconnect, and refresh per profile
+- Color-coded status: green (active), red (expired), gray (disconnected)
 
-2. **Session Management**
-   - **Session Monitoring**: Track remaining time of active AWS SSO sessions
-   - **Visual Indicators**: Color-coded status indicators show session state at a glance
-   - **Automatic Session Renewal**: Renew sessions before they expire
-   - **Session Expiration Handling**: Clear notifications when sessions expire
-   - **Cache Management**: Option to clear SSO cache when quitting with active sessions
+### Profile Management
+- **SSO Profiles**: Create profiles with permission set management
+- **IAM Role Profiles**: Assume roles from source SSO profiles
+- **App-to-Profile Binding**: Bind specific commands (e.g., `terraform`, `npm`) to profiles via `AWS_PROFILE` injection
 
-3. **Menu Bar Integration**
-   - **Quick Access**: Connect to profiles directly from your macOS menu bar
-   - **Session Timer**: View remaining session time without opening the main app
-   - **Status Indicators**: See session status with visual cues
-   - **Tools & Settings**: Dedicated submenu for application utilities and preferences
+### Terminal Integration
+- `gateway` CLI command routes AWS commands through your connected profile
+- `gateway list sso` / `gateway list role` for quick profile enumeration
+- `gateway debug` for troubleshooting
 
-4. **Terminal Integration**
-   - **Gateway Command**: Use the ```gateway``` command to run AWS CLI commands with your connected profile
-   - **Profile Listing**: Easily list available profiles with ```gateway list``` or specific profile types with ```gateway list sso```
-   - **Seamless Experience**: Work with the same profile in both GUI and terminal without manual switching
+### Notifications
+- Per-profile expiry warnings with configurable thresholds
+- Notification deduplication (60s cooldown per profile)
+- "Refresh" action button directly on notifications
 
 ## Installation
 
-Download the latest release from the Release Page and move the application to your Applications folder. The app is signed with an Apple Developer ID for seamless installation.
+Download the latest release from the [Releases](https://github.com/dmcphearson/aws-cli-gateway/releases) page and move the `.app` to your Applications folder.
 
 ### Build from Source
 
-1. Clone this repository:
-   ```
-   git clone https://github.com/dmcphearson/aws-cli-gateway.git
-   cd aws-cli-gateway
-   ```
+Requires Xcode 16+ and macOS 15.2+.
 
-2. Open the project in Xcode:
-   ```
-   open AWS_CLI_Gateway.xcodeproj
-   ```
+```bash
+git clone https://github.com/dmcphearson/aws-cli-gateway.git
+cd aws-cli-gateway
+./build.sh
+```
 
-3. Build the application:
-   - Select **Product > Archive** from the menu
-   - When the Archive window appears, select **Distribute App**
-   - Choose **Custom** and click **Next**
-   - Select **Copy App** and choose a destination folder
-   - Click **Export**
+The built app appears in `output/AWS CLI Gateway.app`. To install:
 
-4. Move the exported ```.app``` file to your Applications folder
+```bash
+cp -R "output/AWS CLI Gateway.app" /Applications/
+```
+
+To sign with your own Developer ID:
+
+```bash
+CODESIGN_IDENTITY="Developer ID Application: Your Name" ./build.sh
+```
 
 ## Terminal Integration
 
-To install the ```gateway``` command:
-
-1. Click on the AWS CLI Gateway menu bar icon
-2. Select **Tools & Settings > Install CLI Tools**
-3. Provide your administrator password when prompted
-
-Once installed, you can use commands like:
+Install the `gateway` command from the menu bar: **Tools & Settings > Install CLI Tools**.
 
 ```bash
 # Run AWS commands with your connected profile
@@ -91,54 +78,28 @@ gateway list
 gateway list sso
 gateway list role
 
-# Get help
-gateway help
-
-# Display debug information
+# Debug information
 gateway debug
 ```
 
-The ```gateway``` command automatically uses whichever profile is currently connected in the AWS CLI Gateway app.
+## Requirements
+
+- macOS 15.2 (Sequoia) or later
+- AWS CLI v2 installed and configured
+- AWS SSO configured for your organization
 
 ## Screenshots
 
-<img src="screenshots/Menu Bar.png" width= 75%>
+<img src="screenshots/Menu Bar.png" width="75%">
 
-<img src="screenshots/Session Timer.png" width= 75%>
+<img src="screenshots/Session Timer.png" width="75%">
 
-<img src="screenshots/Terminal.png" width= 75%>
-
-<img src="screenshots/Permission Sets.png" width= 75%>
-
-<img src="screenshots/IAM Roles.png" width= 75%>
-
-## Requirements
-
-- macOS 12 (Monterey) or later
-- AWS CLI (v2) must be installed and configured
-- AWS SSO must be configured for your organization
-- Python 3 (pre-installed on macOS) for terminal integration
-
-## Usage
-
-1. Launch AWS CLI Gateway
-2. Click "Add Profile" to set up your first AWS profile
-3. Connect to your profile by clicking the star icon next to it
-4. Run AWS CLI commands in terminal using the ```gateway``` command
+<img src="screenshots/Terminal.png" width="75%">
 
 ## Contributing
 
-Contributions are welcome! Please reach out if you'd like to contribute to this project.
+Contributions are welcome. Please open an issue or pull request.
 
-## Future Features/Ideas
+## License
 
-- **IAM Profile Management**:
-    - **Secure Credential Storage**: Store your credentials securely in macOS Keychain instead of plaintext
-    - **Credential Rotation**: Built-in reminders for rotating access keys per security best practices
-- **Enhanced Profile Organization**:
-    - **Profile grouping**: Organize profiles by account, region, or custom groups
-    - **Tagging**: Apply custom tags to profiles
-- **Enhanced Terminal Integration**:
-    - **Custom Commands**: Create aliases for complex AWS CLI commands
-    - **Auto-Completion**: Context-aware command completion
-- **AWS CLI Config File Management**
+See [LICENSE](LICENSE) for details.
