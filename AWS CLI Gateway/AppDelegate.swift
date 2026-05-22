@@ -94,7 +94,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
     // MARK: - Notification Handlers
     
     @objc private func handleSessionExpired() {
-        showAlert(Constants.ErrorMessages.sessionExpired, info: "Your session has expired. Please reconnect.")
     }
     
     @objc private func handleSessionTimeUpdate(_ notification: Notification) {

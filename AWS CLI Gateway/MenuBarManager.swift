@@ -36,6 +36,7 @@ class StatusBarPanel: NSPanel {
 struct StatusBarContentView: View {
     @ObservedObject var viewModel: StatusBarViewModel
     @State private var showDisconnected = false
+    @State private var expandedProfile: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -51,7 +52,13 @@ struct StatusBarContentView: View {
             ForEach(viewModel.connectedProfiles, id: \.name) { profile in
                 ConnectedProfileRow(
                     profile: profile,
-                    onRefresh: { viewModel.refreshProfile(profile.name) },
+                    isExpanded: expandedProfile == profile.name,
+                    onTap: {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            expandedProfile = expandedProfile == profile.name ? nil : profile.name
+                        }
+                    },
+                    onFullRefresh: { viewModel.fullRefreshProfile(profile.name) },
                     onDisconnect: { viewModel.disconnectProfile(profile.name) }
                 )
             }
@@ -112,43 +119,83 @@ struct StatusBarContentView: View {
 
 struct ConnectedProfileRow: View {
     let profile: ProfileDisplayInfo
-    let onRefresh: () -> Void
+    let isExpanded: Bool
+    let onTap: () -> Void
+    let onFullRefresh: () -> Void
     let onDisconnect: () -> Void
 
     var body: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(statusColor)
-                .frame(width: 8, height: 8)
+        VStack(alignment: .leading, spacing: 0) {
+            // Compact row
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(statusColor)
+                    .frame(width: 8, height: 8)
 
-            Text(profile.name)
-                .font(.system(size: 12))
-                .lineLimit(1)
-                .truncationMode(.tail)
+                Text(profile.name)
+                    .font(.system(size: 12))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
 
-            Spacer()
+                Spacer()
 
-            Text(profile.timeRemaining)
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundColor(.secondary)
+                Text(profile.timeRemaining)
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundColor(.secondary)
 
-            Button(action: onRefresh) {
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 11))
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(.secondary)
             }
-            .buttonStyle(.plain)
-            .foregroundColor(.secondary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+            .onTapGesture { onTap() }
 
-            Button(action: onDisconnect) {
-                Image(systemName: "xmark.circle")
-                    .font(.system(size: 11))
+            // Expanded detail
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 6) {
+                    if let account = profile.accountId, let role = profile.roleName {
+                        DetailRow(label: "Account", value: account)
+                        DetailRow(label: "Role", value: role)
+                    }
+                    if let session = profile.sessionName {
+                        DetailRow(label: "Session", value: session)
+                    }
+                    if let refresh = profile.refreshTokenExpiry {
+                        DetailRow(label: "Refresh Token", value: refresh)
+                    }
+
+                    HStack(spacing: 8) {
+                        Button(action: onFullRefresh) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 10))
+                                Text("Full Refresh")
+                                    .font(.system(size: 11))
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+
+                        Button(action: onDisconnect) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "xmark.circle")
+                                    .font(.system(size: 10))
+                                Text("Disconnect")
+                                    .font(.system(size: 11))
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                    .padding(.top, 4)
+                }
+                .padding(.horizontal, 30)
+                .padding(.bottom, 8)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
-            .buttonStyle(.plain)
-            .foregroundColor(.secondary)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 5)
-        .contentShape(Rectangle())
     }
 
     private var statusColor: Color {
@@ -157,6 +204,23 @@ struct ConnectedProfileRow: View {
         case .expiringSoon: return .orange
         case .expired: return .red
         default: return .gray
+        }
+    }
+}
+
+struct DetailRow: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundColor(.secondary)
+                .frame(width: 75, alignment: .trailing)
+            Text(value)
+                .font(.system(size: 11))
+                .foregroundColor(.primary)
         }
     }
 }
@@ -237,6 +301,10 @@ struct ProfileDisplayInfo {
     let name: String
     var timeRemaining: String
     var status: ProfileSessionStatus
+    var refreshTokenExpiry: String?
+    var sessionName: String?
+    var accountId: String?
+    var roleName: String?
 }
 
 class StatusBarViewModel: ObservableObject {
@@ -252,10 +320,45 @@ class StatusBarViewModel: ObservableObject {
 
         connectedProfiles = connected.map { info in
             let session = SessionManager.shared.activeSessions[info.originalName]
+            let profiles = ConfigManager.shared.getProfiles()
+            let awsProfile = profiles.first(where: { $0.name == info.originalName })
+            let ssoProfile = awsProfile as? SSOProfile
+
+            var refreshExpiry: String?
+            if let sessionName = ConfigManager.shared.getSSOSessionName(for: info.originalName) {
+                let homeDir = FileManager.default.homeDirectoryForCurrentUser
+                let ssoCachePath = homeDir.appendingPathComponent(".aws/sso/cache")
+                let data = Data(sessionName.utf8)
+                var digest = [UInt8](repeating: 0, count: Int(CC_SHA1_DIGEST_LENGTH))
+                data.withUnsafeBytes { _ = CC_SHA1($0.baseAddress, CC_LONG(data.count), &digest) }
+                let hash = digest.map { String(format: "%02hhx", $0) }.joined()
+                let tokenFile = ssoCachePath.appendingPathComponent("\(hash).json")
+                if let fileData = try? Data(contentsOf: tokenFile),
+                   let json = try? JSONSerialization.jsonObject(with: fileData) as? [String: Any],
+                   let expiresStr = json["expiresAt"] as? String {
+                    let fmt = ISO8601DateFormatter()
+                    fmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                    if let date = fmt.date(from: expiresStr) ?? ISO8601DateFormatter().date(from: expiresStr) {
+                        let remaining = date.timeIntervalSinceNow
+                        if remaining > 0 {
+                            let days = Int(remaining) / 86400
+                            let hours = (Int(remaining) % 86400) / 3600
+                            refreshExpiry = days > 0 ? "\(days)d \(hours)h remaining" : "\(hours)h remaining"
+                        } else {
+                            refreshExpiry = "Expired"
+                        }
+                    }
+                }
+            }
+
             return ProfileDisplayInfo(
                 name: info.originalName,
                 timeRemaining: session?.formattedTimeRemaining ?? "--:--:--",
-                status: session?.status ?? .connecting
+                status: session?.status ?? .connecting,
+                refreshTokenExpiry: refreshExpiry,
+                sessionName: ConfigManager.shared.getSSOSessionName(for: info.originalName),
+                accountId: ssoProfile?.accountId,
+                roleName: ssoProfile?.roleName
             )
         }
 
@@ -272,6 +375,17 @@ class StatusBarViewModel: ObservableObject {
                 await MainActor.run {
                     manager?.showError("Refresh Failed", message: "Could not refresh session for \(name). The refresh token may have expired — try connecting again.")
                 }
+            }
+        }
+    }
+
+    func fullRefreshProfile(_ name: String) {
+        Task {
+            _ = try? await CommandRunner.shared.runCommand("aws", args: ["sso", "login", "--profile", name])
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            await MainActor.run {
+                SessionManager.shared.startMonitoring(for: name)
+                refresh()
             }
         }
     }
@@ -328,6 +442,7 @@ class MenuBarManager: NSObject {
 
     fileprivate(set) var activeProfile: String? {
         didSet {
+            guard !isRestoringSessions else { return }
             Task { @MainActor in
                 if let profile = activeProfile {
                     SessionManager.shared.startMonitoring(for: profile)
@@ -339,6 +454,7 @@ class MenuBarManager: NSObject {
             }
         }
     }
+    private var isRestoringSessions = false
 
     private override init() {
         super.init()
@@ -365,10 +481,25 @@ class MenuBarManager: NSObject {
             restoreActiveSessions()
             viewModel.refresh()
 
-            // Live session updates
-            SessionManager.shared.onSessionsUpdated = { [weak self] _ in
+            // Live session updates — only update time strings, not full rebuild
+            SessionManager.shared.onSessionsUpdated = { [weak self] sessions in
                 DispatchQueue.main.async {
-                    self?.viewModel.refresh()
+                    guard let self = self else { return }
+                    var changed = false
+                    for i in self.viewModel.connectedProfiles.indices {
+                        let name = self.viewModel.connectedProfiles[i].name
+                        if let session = sessions[name] {
+                            let newTime = session.formattedTimeRemaining
+                            if self.viewModel.connectedProfiles[i].timeRemaining != newTime {
+                                self.viewModel.connectedProfiles[i].timeRemaining = newTime
+                                self.viewModel.connectedProfiles[i].status = session.status
+                                changed = true
+                            }
+                        }
+                    }
+                    if changed {
+                        self.viewModel.objectWillChange.send()
+                    }
                 }
             }
 
@@ -423,6 +554,9 @@ class MenuBarManager: NSObject {
 
     @MainActor
     private func restoreActiveSessions() {
+        isRestoringSessions = true
+        defer { isRestoringSessions = false }
+
         ProfileHistoryManager.shared.clearConnectedProfile()
 
         let allProfiles = ConfigManager.shared.getProfiles()
@@ -434,8 +568,8 @@ class MenuBarManager: NSObject {
             let profileName = profile.name
             var hasValidSession = false
 
-            if let ssoExpiry = SSOTokenManager.shared.getSSOTokenExpiry(forProfile: profileName),
-               ssoExpiry > Date() {
+            let ssoExpiry = SSOTokenManager.shared.getSSOTokenExpiry(forProfile: profileName)
+            if let ssoExpiry = ssoExpiry, ssoExpiry > Date() {
                 hasValidSession = true
             }
 

@@ -149,7 +149,7 @@ class SessionManager {
         // Reset state
         self.isCleanDisconnect = false
         self.isMonitoring = true
-        self.activeProfile = profileName
+        if self.activeProfile == nil { self.activeProfile = profileName }
 
         // Update UI immediately to indicate we're working on it
         self.onSessionUpdate?("Session: Connecting...")
@@ -162,15 +162,15 @@ class SessionManager {
             if Task.isCancelled { return }
 
             // First try the content-based approach
-            if let cacheFilename = await self.findMatchingCacheFile(forProfile: profileName) {
+            let cacheFilename = await self.findMatchingCacheFile(forProfile: profileName)
+            if let cacheFilename = cacheFilename {
                 // Check for cancellation
-                if Task.isCancelled { return }
 
                 self.profileCacheFileMap[profileName] = cacheFilename
 
-                if let ssoToken = try? await self.readCredentialsFromCacheFile(cacheFilename) {
+                let ssoToken = try? await self.readCredentialsFromCacheFile(cacheFilename)
+                if let ssoToken = ssoToken {
                     // Check for cancellation
-                    if Task.isCancelled { return }
 
                     // Also read the SSO session token expiry
                     let ssoExpiry = SSOTokenManager.shared.getSSOTokenExpiry(forProfile: profileName)
@@ -1188,9 +1188,6 @@ class SessionManager {
                                 await MainActor.run {
                                     if self.isMonitoring {
                                         self.activeSessions[profileName]?.status = .expired
-                                        if profileName == self.activeProfile {
-                                            self.handleExpiredSession()
-                                        }
                                         self.onSessionsUpdated?(self.activeSessions)
                                         NotificationCenter.default.post(
                                             name: Notification.Name(Constants.Notifications.sessionExpired),
@@ -1243,22 +1240,14 @@ class SessionManager {
             }
         }
 
-        // Role creds reflect the permission set duration (actual usable session).
-        // SSO access token (60min) auto-refreshes via refresh token silently.
-        let effectiveExpiry: Date? = expiryDate ?? ssoTokenExpiryDate
-
-        guard let expiration = effectiveExpiry else {
-            handleExpiredSession()
-            return
-        }
-
-        let remaining = expiration.timeIntervalSinceNow
-        if remaining <= 0 {
-            handleExpiredSession()
-            return
-        }
-
         // Format time string for the primary profile
+        let effectiveExpiry: Date? = expiryDate ?? ssoTokenExpiryDate
+        guard let expiration = effectiveExpiry else {
+            self.onSessionsUpdated?(activeSessions)
+            return
+        }
+
+        let remaining = max(0, expiration.timeIntervalSinceNow)
         let hours = Int(remaining) / 3600
         let minutes = (Int(remaining) % 3600) / 60
         let seconds = Int(remaining) % 60
