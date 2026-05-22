@@ -19,13 +19,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install OpenGrep
+      - name: Install and Run OpenGrep
         run: |
           curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.sh | bash
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
-
-      - name: Run OpenGrep
-        run: |
+          export PATH="$HOME/.local/bin:$HOME/.opengrep/cli/latest:$PATH"
           opengrep scan --config auto --sarif --output opengrep.sarif . || true
 
       - name: Upload SARIF
@@ -33,3 +30,4 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: opengrep.sarif
+          category: opengrep
