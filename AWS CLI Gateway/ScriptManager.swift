@@ -8,92 +8,169 @@ class ScriptManager {
     // MARK: - Gateway Command Installation
 
     func installGatewayCommand() throws -> String {
-        // Create a simplified gateway script with better formatting
         let scriptContent = """
 #!/bin/bash
 
-# Configuration
+# AWS CLI Gateway v2.0.0
+# Interactive profile selection with per-terminal session persistence
+
 PROFILE_HISTORY="$HOME/Library/Application Support/AWS CLI Gateway/profile_history.json"
 AWS_CONFIG="$HOME/.aws/config"
 AWS_CMD="/usr/local/bin/aws"
+SESSION_DIR="/tmp/gateway-sessions"
+TTY_HASH=$(tty 2>/dev/null | md5 -q 2>/dev/null || echo "$$")
+SESSION_FILE="$SESSION_DIR/session-$TTY_HASH"
 
-# Debug function - call this when troubleshooting
-function debug_info() {
-    echo "=== DEBUG INFO ==="
-    echo "Script version: 1.2.0"
-    echo "Profile history path: $PROFILE_HISTORY"
-    echo "Profile history exists: $([ -f "$PROFILE_HISTORY" ] && echo "Yes" || echo "No")"
-    if [ -f "$PROFILE_HISTORY" ]; then
-        echo "Profile history content:"
-        cat "$PROFILE_HISTORY" 2>/dev/null || echo "File not readable"
-    fi
-    echo "AWS config path: $AWS_CONFIG"
-    echo "AWS config exists: $([ -f "$AWS_CONFIG" ] && echo "Yes" || echo "No")"
-    echo "AWS CLI path: $AWS_CMD"
-    echo "AWS CLI exists: $([ -x "$AWS_CMD" ] && echo "Yes" || echo "No")"
-    echo "==================="
-}
+mkdir -p "$SESSION_DIR"
 
-# Ensure required files exist
 function check_requirements() {
     if [ ! -f "$PROFILE_HISTORY" ]; then
-        echo "Error: Profile history file not found at: $PROFILE_HISTORY"
-        echo "Please run AWS CLI Gateway app first."
+        echo "Error: Profile history not found. Run AWS CLI Gateway app first." >&2
         exit 1
     fi
-
-    if [ ! -f "$AWS_CONFIG" ]; then
-        echo "Error: AWS config file not found at $AWS_CONFIG"
-        exit 1
-    fi
-
     if [ ! -x "$AWS_CMD" ]; then
-        echo "Error: AWS CLI not found at $AWS_CMD"
+        echo "Error: AWS CLI not found at $AWS_CMD" >&2
         exit 1
     fi
 }
 
-# Get active profile using Python for proper JSON parsing
-function get_active_profile() {
-    # Use Python to properly parse the JSON and extract the connected profile
-    PROFILE=$(python3 -c "
+function get_connected_profiles() {
+    python3 -c "
 import json, sys
-try:
-    with open('$PROFILE_HISTORY', 'r') as f:
-        data = json.load(f)
-
-    # First try to find connected profile
-    connected_profile = None
-    for profile in data:
-        if profile.get('isConnected', False) == True:
-            connected_profile = profile.get('originalName')
-            break
-
-    # If no connected profile, try default
-    if not connected_profile:
-        for profile in data:
-            if profile.get('isDefault', False) == True:
-                connected_profile = profile.get('originalName')
-                break
-
-    # Last resort - first profile
-    if not connected_profile and data:
-        connected_profile = data[0].get('originalName')
-
-    if connected_profile:
-        print(connected_profile)
-    else:
-        sys.stderr.write('Error: No profiles found in $PROFILE_HISTORY\\n')
-        sys.exit(1)
-except Exception as e:
-    sys.stderr.write(f'Error reading profile: {str(e)}\\n')
-    sys.exit(1)
-")
-
-    echo "$PROFILE"
+with open('$PROFILE_HISTORY', 'r') as f:
+    data = json.load(f)
+for p in data:
+    if p.get('isConnected', False):
+        print(p.get('originalName') + '|' + p.get('profileType', 'sso'))
+" 2>/dev/null
 }
 
-# List all profiles of a specific type
+function interactive_select() {
+    local -a NAMES=()
+    local -a TYPES=()
+
+    while IFS='|' read -r name ptype; do
+        NAMES+=("$name")
+        TYPES+=("$ptype")
+    done < <(get_connected_profiles)
+
+    local COUNT=${#NAMES[@]}
+
+    if [ "$COUNT" -eq 0 ]; then
+        echo "No active sessions. Connect a profile in AWS CLI Gateway first." >&2
+        exit 1
+    fi
+
+    if [ "$COUNT" -eq 1 ]; then
+        echo "${NAMES[0]}"
+        return
+    fi
+
+    local SELECTED=0
+    local CURRENT_DEFAULT=""
+    [ -f "$SESSION_FILE" ] && CURRENT_DEFAULT=$(cat "$SESSION_FILE")
+
+    # Position cursor at current default if set
+    for i in "${!NAMES[@]}"; do
+        if [ "${NAMES[$i]}" == "$CURRENT_DEFAULT" ]; then
+            SELECTED=$i
+            break
+        fi
+    done
+
+    # Hide cursor
+    printf '\\e[?25l' >/dev/tty
+
+    # Cleanup on exit
+    trap 'printf "\\e[?25h" >/dev/tty' EXIT
+
+    # Draw menu
+    printf '\\n  Select a profile (↑/↓ to move, Enter to select, q to cancel):\\n\\n' >/dev/tty
+
+    while true; do
+        # Draw options
+        for i in "${!NAMES[@]}"; do
+            if [ "$i" -eq "$SELECTED" ]; then
+                printf '\\e[1m  ▸ %s (%s)\\e[0m\\n' "${NAMES[$i]}" "${TYPES[$i]}" >/dev/tty
+            else
+                printf '    %s (%s)\\n' "${NAMES[$i]}" "${TYPES[$i]}" >/dev/tty
+            fi
+        done
+
+        # Read keypress
+        IFS= read -rsn1 KEY </dev/tty
+
+        # Handle escape sequences (arrow keys)
+        if [ "$KEY" == $'\\e' ]; then
+            read -rsn2 SEQ </dev/tty
+            case "$SEQ" in
+                "[A") # Up
+                    ((SELECTED > 0)) && ((SELECTED--))
+                    ;;
+                "[B") # Down
+                    ((SELECTED < COUNT - 1)) && ((SELECTED++))
+                    ;;
+            esac
+        elif [ "$KEY" == "" ]; then
+            # Enter pressed
+            break
+        elif [ "$KEY" == "q" ] || [ "$KEY" == "Q" ]; then
+            printf '\\e[?25h' >/dev/tty
+            echo "Cancelled." >&2
+            exit 0
+        elif [ "$KEY" == "k" ]; then
+            ((SELECTED > 0)) && ((SELECTED--))
+        elif [ "$KEY" == "j" ]; then
+            ((SELECTED < COUNT - 1)) && ((SELECTED++))
+        fi
+
+        # Move cursor back up to redraw
+        printf '\\e[%dA' "$COUNT" >/dev/tty
+    done
+
+    # Show cursor
+    printf '\\e[?25h' >/dev/tty
+
+    echo "${NAMES[$SELECTED]}"
+}
+
+function use_profile() {
+    local PROFILE
+    PROFILE=$(interactive_select)
+    if [ -n "$PROFILE" ]; then
+        echo "$PROFILE" > "$SESSION_FILE"
+        echo "Default profile set to: $PROFILE (this terminal)" >&2
+    fi
+}
+
+function get_session_profile() {
+    if [ -f "$SESSION_FILE" ]; then
+        local SAVED
+        SAVED=$(cat "$SESSION_FILE")
+        # Verify saved profile is still connected
+        if get_connected_profiles | grep -q "^${SAVED}|"; then
+            echo "$SAVED"
+            return
+        fi
+        rm -f "$SESSION_FILE"
+    fi
+    return 1
+}
+
+function get_active_profile() {
+    # Check session default first
+    local SESSION_PROFILE
+    SESSION_PROFILE=$(get_session_profile) && { echo "$SESSION_PROFILE"; return; }
+
+    # Fall back to interactive selection
+    local PROFILE
+    PROFILE=$(interactive_select)
+    if [ -n "$PROFILE" ]; then
+        echo "$PROFILE" > "$SESSION_FILE"
+        echo "$PROFILE"
+    fi
+}
+
 function list_profiles() {
     local TYPE=$1
 
@@ -101,73 +178,121 @@ function list_profiles() {
     echo "------------------------"
 
     if [ "$TYPE" == "sso" ]; then
-        grep -B 1 -A 10 '\\[profile' "$AWS_CONFIG" | 
-        grep -v 'role_arn' | 
-        grep -A 1 'sso_' | 
-        grep '\\[profile' | 
+        grep -B 1 -A 10 '\\[profile' "$AWS_CONFIG" |
+        grep -v 'role_arn' |
+        grep -A 1 'sso_' |
+        grep '\\[profile' |
         sed 's/\\[profile \\(.*\\)\\]/\\1/'
     elif [ "$TYPE" == "role" ] || [ "$TYPE" == "iam" ]; then
-        grep -B 1 -A 10 '\\[profile' "$AWS_CONFIG" | 
-        grep -B 1 'role_arn' | 
-        grep '\\[profile' | 
+        grep -B 1 -A 10 '\\[profile' "$AWS_CONFIG" |
+        grep -B 1 'role_arn' |
+        grep '\\[profile' |
         sed 's/\\[profile \\(.*\\)\\]/\\1/'
     else
-        grep '\\[profile' "$AWS_CONFIG" | 
+        grep '\\[profile' "$AWS_CONFIG" |
         sed 's/\\[profile \\(.*\\)\\]/\\1/'
     fi
 }
 
-# Show help message
-function show_help() {
-    echo "AWS CLI Gateway - Command Line Interface"
+function show_status() {
+    local CURRENT=""
+    [ -f "$SESSION_FILE" ] && CURRENT=$(cat "$SESSION_FILE")
+
+    echo "Gateway Session Status"
+    echo "======================"
+    if [ -n "$CURRENT" ]; then
+        echo "Default profile: $CURRENT"
+    else
+        echo "Default profile: (none set — run 'gateway use' to select)"
+    fi
     echo ""
-    echo "USAGE:"
-    echo "  gateway [COMMAND] [ARGS...]"
-    echo ""
-    echo "COMMANDS:"
-    echo "  list sso                  List all SSO profiles"
-    echo "  list role                 List all IAM role profiles" 
-    echo "  list                      List all profiles"
-    echo "  debug                     Show debug information"
-    echo "  help                      Show this help message"
-    echo ""
-    echo "EXAMPLES:"
-    echo "  gateway s3 ls             Run 'aws s3 ls' with current profile"
-    echo "  gateway list sso          List all SSO profiles"
-    echo ""
-    echo "Any command not recognized as a gateway command will be passed to the AWS CLI"
-    echo "with the current profile automatically added."
+    echo "Connected profiles:"
+    while IFS='|' read -r name ptype; do
+        if [ "$name" == "$CURRENT" ]; then
+            printf '  ● %s (%s) ← active\\n' "$name" "$ptype"
+        else
+            printf '  ○ %s (%s)\\n' "$name" "$ptype"
+        fi
+    done < <(get_connected_profiles)
 }
 
-# Main execution
+function debug_info() {
+    echo "=== DEBUG INFO ==="
+    echo "Script version: 2.0.0"
+    echo "Profile history: $PROFILE_HISTORY"
+    echo "Session file: $SESSION_FILE"
+    echo "TTY: $(tty 2>/dev/null || echo 'unknown')"
+    echo ""
+    [ -f "$SESSION_FILE" ] && echo "Session default: $(cat "$SESSION_FILE")" || echo "Session default: (none)"
+    echo ""
+    echo "Profile history exists: $([ -f "$PROFILE_HISTORY" ] && echo "Yes" || echo "No")"
+    if [ -f "$PROFILE_HISTORY" ]; then
+        echo "Connected profiles:"
+        get_connected_profiles | while IFS='|' read -r name ptype; do
+            echo "  - $name ($ptype)"
+        done
+    fi
+    echo ""
+    echo "AWS CLI: $AWS_CMD ($([ -x "$AWS_CMD" ] && echo "found" || echo "missing"))"
+    echo "AWS config: $([ -f "$AWS_CONFIG" ] && echo "found" || echo "missing")"
+    echo "==================="
+}
+
+function show_help() {
+    echo "AWS CLI Gateway v2.0.0"
+    echo ""
+    echo "USAGE:"
+    echo "  gateway [OPTIONS] [AWS_COMMAND] [ARGS...]"
+    echo ""
+    echo "OPTIONS:"
+    echo "  -u, use       Select default profile for this terminal (interactive)"
+    echo "  -l, list      List all profiles (-l sso | -l role)"
+    echo "  -s, status    Show current session and connected profiles"
+    echo "  -d, debug     Show debug information"
+    echo "  -h, --help    Show this help message"
+    echo ""
+    echo "EXAMPLES:"
+    echo "  gateway use              Pick a profile interactively"
+    echo "  gateway s3 ls            Run 'aws s3 ls' with session profile"
+    echo "  gateway -l sso           List SSO profiles"
+    echo "  gateway status           Show current session info"
+    echo ""
+    echo "BEHAVIOR:"
+    echo "  The selected profile persists for this terminal session."
+    echo "  Run 'gateway use' again to switch. Each terminal window is independent."
+}
+
+# Main
 check_requirements
 
-# Process commands
 case "$1" in
-    "list")
+    "-u"|"use")
+        use_profile
+        ;;
+    "-l"|"list")
         if [ "$2" == "sso" ] || [ "$2" == "role" ] || [ "$2" == "iam" ]; then
             list_profiles "$2"
         else
             list_profiles "all"
         fi
         ;;
-    "help")
-        show_help
+    "-s"|"status")
+        show_status
         ;;
-    "debug")
+    "-d"|"debug")
         debug_info
+        ;;
+    "-h"|"--help"|"help")
+        show_help
         ;;
     "")
         show_help
         ;;
     *)
-        # Not a gateway command, pass to AWS CLI
         PROFILE=$(get_active_profile)
         echo "Using profile: $PROFILE" >&2
-
-        # Check if --profile is already specified
         if [[ "$*" == *"--profile"* ]]; then
-            $AWS_CMD "$@" 
+            $AWS_CMD "$@"
         else
             $AWS_CMD "$@" --profile "$PROFILE"
         fi
