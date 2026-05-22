@@ -311,69 +311,71 @@ struct ToolsSection: View {
             Divider()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 16) {
                     // Gateway CLI
-                    GroupBox {
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack(spacing: 10) {
-                                Image(systemName: "terminal")
-                                    .font(.title3)
-                                    .foregroundColor(.blue)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Gateway CLI")
-                                        .font(.system(size: 13, weight: .semibold))
-                                    Text("Installs `gateway` to /usr/local/bin for running AWS commands with your active profile.")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-
-                            HStack {
-                                Button("Install Gateway CLI") { installGatewayCLI() }
-                                    .buttonStyle(.borderedProminent)
-                                    .controlSize(.small)
-
-                                if let msg = installMessage {
-                                    Text(msg)
-                                        .font(.system(size: 11))
-                                        .foregroundColor(msg.contains("Error") ? .red : .green)
-                                        .lineLimit(2)
-                                }
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 10) {
+                            Image(systemName: "terminal")
+                                .font(.title3)
+                                .foregroundColor(.blue)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Gateway CLI")
+                                    .font(.system(size: 13, weight: .semibold))
+                                Text("Installs `gateway` to /usr/local/bin for running AWS commands with your active profile.")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
                             }
                         }
-                        .padding(4)
+
+                        HStack {
+                            Button("Install Gateway CLI") { installGatewayCLI() }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.small)
+
+                            if let msg = installMessage {
+                                Text(msg)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(msg.contains("Error") ? .red : .green)
+                                    .lineLimit(2)
+                            }
+                        }
                     }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.primary.opacity(0.04))
+                    .cornerRadius(8)
 
                     // Clear Cache
-                    GroupBox {
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack(spacing: 10) {
-                                Image(systemName: "trash")
-                                    .font(.title3)
-                                    .foregroundColor(.orange)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Clear AWS Cache")
-                                        .font(.system(size: 13, weight: .semibold))
-                                    Text("Removes all cached credentials from ~/.aws/cli/cache and ~/.aws/sso/cache. Disconnects all active sessions.")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-
-                            HStack {
-                                Button("Clear Cache") { clearCache() }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
-
-                                if let msg = cacheMessage {
-                                    Text(msg)
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.green)
-                                }
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 10) {
+                            Image(systemName: "trash")
+                                .font(.title3)
+                                .foregroundColor(.orange)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Clear AWS Cache")
+                                    .font(.system(size: 13, weight: .semibold))
+                                Text("Removes all cached credentials from ~/.aws/cli/cache and ~/.aws/sso/cache. Disconnects all active sessions.")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
                             }
                         }
-                        .padding(4)
+
+                        HStack {
+                            Button("Clear Cache") { clearCache() }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+
+                            if let msg = cacheMessage {
+                                Text(msg)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.green)
+                            }
+                        }
                     }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.primary.opacity(0.04))
+                    .cornerRadius(8)
                 }
                 .padding(20)
             }

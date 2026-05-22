@@ -35,14 +35,13 @@ struct ProfileSession {
 enum ProfileSessionStatus: Equatable {
     case connecting
     case active
-    case expiringSoon
     case expired
     case error(String)
 
     static func == (lhs: ProfileSessionStatus, rhs: ProfileSessionStatus) -> Bool {
         switch (lhs, rhs) {
         case (.connecting, .connecting), (.active, .active),
-             (.expiringSoon, .expiringSoon), (.expired, .expired):
+             (.expired, .expired):
             return true
         case let (.error(a), .error(b)):
             return a == b
