@@ -1212,7 +1212,7 @@ class SessionManager {
             if let roleExpiry = session.roleCredExpiryDate,
                roleExpiry.timeIntervalSinceNow > 0,
                roleExpiry.timeIntervalSinceNow <= proactiveRefreshThreshold,
-               session.status == .active || session.status == .expiringSoon {
+               session.status == .active {
                 Task { [weak self] in
                     guard let self = self, self.isMonitoring else { return }
                     _ = try? await CommandRunner.shared.runCommand("aws", args: ["sts", "get-caller-identity", "--profile", profileName])
@@ -1233,8 +1233,6 @@ class SessionManager {
             if remaining <= 0 {
                 activeSessions[profileName]?.status = .expired
                 anyExpired = true
-            } else if remaining <= tokenExpirationWarningThreshold {
-                activeSessions[profileName]?.status = .expiringSoon
             } else {
                 activeSessions[profileName]?.status = .active
             }

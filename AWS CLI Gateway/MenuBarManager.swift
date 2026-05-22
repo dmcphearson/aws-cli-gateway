@@ -133,15 +133,19 @@ struct ConnectedProfileRow: View {
                     .frame(width: 8, height: 8)
 
                 Text(profile.name)
-                    .font(.system(size: 12))
+                    .font(.system(size: 14))
                     .lineLimit(1)
                     .truncationMode(.tail)
 
                 Spacer()
 
                 Text(profile.timeRemaining)
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundColor(.secondary)
+                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(statusColor.opacity(0.20))
+                    .cornerRadius(4)
 
                 Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                     .font(.system(size: 9, weight: .medium))
@@ -159,14 +163,15 @@ struct ConnectedProfileRow: View {
                         DetailRow(label: "Account", value: account)
                         DetailRow(label: "Role", value: role)
                     }
-                    if let session = profile.sessionName {
-                        DetailRow(label: "Session", value: session)
+                    if let region = profile.region {
+                        DetailRow(label: "Region", value: region)
                     }
-                    if let refresh = profile.refreshTokenExpiry {
-                        DetailRow(label: "Refresh Token", value: refresh)
+                    if let expires = profile.expiresAtLocal {
+                        DetailRow(label: "Expires", value: expires)
                     }
 
                     HStack(spacing: 8) {
+                        Spacer()
                         Button(action: onFullRefresh) {
                             HStack(spacing: 4) {
                                 Image(systemName: "arrow.clockwise")
@@ -188,6 +193,7 @@ struct ConnectedProfileRow: View {
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
+                        Spacer()
                     }
                     .padding(.top, 4)
                 }
@@ -201,7 +207,6 @@ struct ConnectedProfileRow: View {
     private var statusColor: Color {
         switch profile.status {
         case .active: return .green
-        case .expiringSoon: return .orange
         case .expired: return .red
         default: return .gray
         }
@@ -301,10 +306,10 @@ struct ProfileDisplayInfo {
     let name: String
     var timeRemaining: String
     var status: ProfileSessionStatus
-    var refreshTokenExpiry: String?
-    var sessionName: String?
     var accountId: String?
     var roleName: String?
+    var region: String?
+    var expiresAtLocal: String?
 }
 
 class StatusBarViewModel: ObservableObject {
@@ -320,34 +325,24 @@ class StatusBarViewModel: ObservableObject {
 
         connectedProfiles = connected.map { info in
             let session = SessionManager.shared.activeSessions[info.originalName]
-            let profiles = ConfigManager.shared.getProfiles()
-            let awsProfile = profiles.first(where: { $0.name == info.originalName })
+            let awsProfile = allProfiles.first(where: { $0.name == info.originalName })
             let ssoProfile = awsProfile as? SSOProfile
 
-            var refreshExpiry: String?
-            if let sessionName = ConfigManager.shared.getSSOSessionName(for: info.originalName) {
-                let homeDir = FileManager.default.homeDirectoryForCurrentUser
-                let ssoCachePath = homeDir.appendingPathComponent(".aws/sso/cache")
-                let data = Data(sessionName.utf8)
-                var digest = [UInt8](repeating: 0, count: Int(CC_SHA1_DIGEST_LENGTH))
-                data.withUnsafeBytes { _ = CC_SHA1($0.baseAddress, CC_LONG(data.count), &digest) }
-                let hash = digest.map { String(format: "%02hhx", $0) }.joined()
-                let tokenFile = ssoCachePath.appendingPathComponent("\(hash).json")
-                if let fileData = try? Data(contentsOf: tokenFile),
-                   let json = try? JSONSerialization.jsonObject(with: fileData) as? [String: Any],
-                   let expiresStr = json["expiresAt"] as? String {
-                    let fmt = ISO8601DateFormatter()
-                    fmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-                    if let date = fmt.date(from: expiresStr) ?? ISO8601DateFormatter().date(from: expiresStr) {
-                        let remaining = date.timeIntervalSinceNow
-                        if remaining > 0 {
-                            let days = Int(remaining) / 86400
-                            let hours = (Int(remaining) % 86400) / 3600
-                            refreshExpiry = days > 0 ? "\(days)d \(hours)h remaining" : "\(hours)h remaining"
-                        } else {
-                            refreshExpiry = "Expired"
-                        }
-                    }
+            var expiresLocal: String?
+            if let expiry = session?.effectiveExpiry {
+                let fmt = DateFormatter()
+                fmt.dateStyle = .none
+                fmt.timeStyle = .short
+                fmt.timeZone = .current
+                let timePart = fmt.string(from: expiry)
+                if Calendar.current.isDateInToday(expiry) {
+                    expiresLocal = "Today at \(timePart)"
+                } else if Calendar.current.isDateInTomorrow(expiry) {
+                    expiresLocal = "Tomorrow at \(timePart)"
+                } else {
+                    let dayFmt = DateFormatter()
+                    dayFmt.dateFormat = "MMM d"
+                    expiresLocal = "\(dayFmt.string(from: expiry)) at \(timePart)"
                 }
             }
 
@@ -355,10 +350,10 @@ class StatusBarViewModel: ObservableObject {
                 name: info.originalName,
                 timeRemaining: session?.formattedTimeRemaining ?? "--:--:--",
                 status: session?.status ?? .connecting,
-                refreshTokenExpiry: refreshExpiry,
-                sessionName: ConfigManager.shared.getSSOSessionName(for: info.originalName),
                 accountId: ssoProfile?.accountId,
-                roleName: ssoProfile?.roleName
+                roleName: ssoProfile?.roleName,
+                region: ssoProfile?.region,
+                expiresAtLocal: expiresLocal
             )
         }
 
@@ -381,8 +376,21 @@ class StatusBarViewModel: ObservableObject {
 
     func fullRefreshProfile(_ name: String) {
         Task {
+            // Delete existing role cred cache for this profile
+            if let cacheFile = SessionManager.shared.activeSessions[name]?.cacheFileName {
+                let homeDir = FileManager.default.homeDirectoryForCurrentUser
+                let cachePath = homeDir.appendingPathComponent(".aws/cli/cache/\(cacheFile)")
+                try? FileManager.default.removeItem(at: cachePath)
+            }
+
+            // Re-login (opens browser, gets fresh SSO token + refresh token)
             _ = try? await CommandRunner.shared.runCommand("aws", args: ["sso", "login", "--profile", name])
             try? await Task.sleep(nanoseconds: 1_000_000_000)
+
+            // Force new role credentials into the cache
+            _ = try? await CommandRunner.shared.runCommand("aws", args: ["sts", "get-caller-identity", "--profile", name])
+            try? await Task.sleep(nanoseconds: 500_000_000)
+
             await MainActor.run {
                 SessionManager.shared.startMonitoring(for: name)
                 refresh()
