@@ -488,6 +488,7 @@ class MenuBarManager: NSObject {
             setupNotifications()
             restoreActiveSessions()
             viewModel.refresh()
+            updateStatusIcon()
 
             // Live session updates — only update time strings, not full rebuild
             SessionManager.shared.onSessionsUpdated = { [weak self] sessions in
@@ -508,6 +509,7 @@ class MenuBarManager: NSObject {
                     if changed {
                         self.viewModel.objectWillChange.send()
                     }
+                    self.updateStatusIcon()
                 }
             }
 
@@ -617,6 +619,42 @@ class MenuBarManager: NSObject {
         statusItem = nil
     }
 
+    // MARK: - Status Icon
+
+    private var statusDotView: NSView?
+
+    private func updateStatusIcon() {
+        guard let button = statusItem?.button else { return }
+        guard let baseImage = NSImage(named: "cloud-lock") else { return }
+
+        let sessions = SessionManager.shared.activeSessions
+        let hasActive = sessions.values.contains { $0.status == .active }
+        let hasExpired = sessions.values.contains { $0.status == .expired }
+
+        button.image = baseImage
+        button.image?.isTemplate = true
+
+        statusDotView?.removeFromSuperview()
+        statusDotView = nil
+
+        if sessions.isEmpty { return }
+
+        let dotColor: NSColor = hasActive ? .systemGreen : (hasExpired ? .systemRed : .systemGray)
+        let dotDiameter: CGFloat = 6
+
+        let dot = NSView(frame: NSRect(
+            x: button.bounds.width - dotDiameter - 1,
+            y: 1,
+            width: dotDiameter,
+            height: dotDiameter
+        ))
+        dot.wantsLayer = true
+        dot.layer?.backgroundColor = dotColor.cgColor
+        dot.layer?.cornerRadius = dotDiameter / 2
+        button.addSubview(dot)
+        statusDotView = dot
+    }
+
     // MARK: - Notifications
 
     private func setupNotifications() {
@@ -689,6 +727,7 @@ class MenuBarManager: NSObject {
             await MainActor.run {
                 self.activeProfile = nil
                 self.viewModel.refresh()
+                self.updateStatusIcon()
             }
         }
     }
@@ -731,6 +770,7 @@ class MenuBarManager: NSObject {
         if let profile = notification.userInfo?[Constants.NotificationKeys.profile] as? AWSProfile {
             activeProfile = profile.name
             ProfileHistoryManager.shared.setConnectedProfile(profile.name)
+            updateStatusIcon()
         }
     }
 
@@ -746,6 +786,7 @@ class MenuBarManager: NSObject {
             activeProfile = nil
         }
         viewModel.refresh()
+        updateStatusIcon()
     }
 
     // MARK: - Token Expiration Handling

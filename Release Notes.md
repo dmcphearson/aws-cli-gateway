@@ -1,5 +1,13 @@
 # Release Notes
 
+## Version 1.0.1
+
+- Added status indicator dot on menu bar icon (green = active session, red = expired)
+- Interactive arrow-key profile picker for `gateway use` CLI command
+- Per-terminal session persistence for gateway CLI
+
+---
+
 ## Version 1.0.0
 
 Major release — complete rebuild of the session management system and UI.
