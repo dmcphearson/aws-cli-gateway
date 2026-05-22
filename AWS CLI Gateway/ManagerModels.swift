@@ -14,22 +14,42 @@ class RoleManager {
     private var roles: [Role] = []
 
     private var configURL: URL? {
+        guard let dir = Self.ensureAppSupportDirectory() else { return nil }
+        return dir.appendingPathComponent("role_manager.json")
+    }
+
+    static func ensureAppSupportDirectory() -> URL? {
+        let fileManager = FileManager.default
         guard let appSupportURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             return nil
         }
 
-        let awsDirectoryURL = appSupportURL.appendingPathComponent("AWS CLI Gateway", isDirectory: true)
+        let dirURL = appSupportURL.appendingPathComponent("AWS CLI Gateway", isDirectory: true)
 
-        if !fileManager.fileExists(atPath: awsDirectoryURL.path) {
-            do {
-                try fileManager.createDirectory(at: awsDirectoryURL, withIntermediateDirectories: true)
-            } catch {
-                print("Error creating directory: \(error)")
-                return nil
+        do {
+            if fileManager.fileExists(atPath: dirURL.path) {
+                let attrs = try fileManager.attributesOfItem(atPath: dirURL.path)
+                let ownerID = attrs[.ownerAccountID] as? Int ?? -1
+                if ownerID != Int(getuid()) {
+                    // Directory owned by wrong user (e.g. root) — migrate contents
+                    let tempDir = appSupportURL.appendingPathComponent("AWS CLI Gateway.migrate", isDirectory: true)
+                    try? fileManager.removeItem(at: tempDir)
+                    try fileManager.createDirectory(at: tempDir, withIntermediateDirectories: true)
+                    let contents = try fileManager.contentsOfDirectory(at: dirURL, includingPropertiesForKeys: nil)
+                    for file in contents {
+                        try? fileManager.copyItem(at: file, to: tempDir.appendingPathComponent(file.lastPathComponent))
+                    }
+                    try fileManager.removeItem(at: dirURL)
+                    try fileManager.moveItem(at: tempDir, to: dirURL)
+                }
+            } else {
+                try fileManager.createDirectory(at: dirURL, withIntermediateDirectories: true)
             }
+        } catch {
+            return nil
         }
 
-        return awsDirectoryURL.appendingPathComponent("role_manager.json")
+        return dirURL
     }
 
     init() {
@@ -103,22 +123,8 @@ class PermissionSetManager {
     private var permissionSets: [PermissionSet] = []
 
     private var configURL: URL? {
-        guard let appSupportURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
-            return nil
-        }
-
-        let awsDirectoryURL = appSupportURL.appendingPathComponent("AWS CLI Gateway", isDirectory: true)
-
-        if !fileManager.fileExists(atPath: awsDirectoryURL.path) {
-            do {
-                try fileManager.createDirectory(at: awsDirectoryURL, withIntermediateDirectories: true)
-            } catch {
-                print("Error creating directory: \(error)")
-                return nil
-            }
-        }
-
-        return awsDirectoryURL.appendingPathComponent("permission_set_manager.json")
+        guard let dir = RoleManager.ensureAppSupportDirectory() else { return nil }
+        return dir.appendingPathComponent("permission_set_manager.json")
     }
 
     init() {
