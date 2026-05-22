@@ -8,6 +8,28 @@
 
 A macOS menu bar application for managing AWS SSO profiles and sessions. Monitor multiple concurrent sessions, get proactive expiry warnings, and run AWS CLI commands without manually specifying profiles.
 
+## What's New in v1.0.0
+
+Version 1.0 is a ground-up redesign of AWS CLI Gateway.
+
+**Completely new interface** — The legacy NSMenu dropdown has been replaced with a floating NSPanel powered by SwiftUI. Profiles are displayed as interactive rows with expandable detail sections showing region, account ID, role, and token expiry. Connect, disconnect, and refresh sessions without ever leaving the menu bar.
+
+**Multi-profile session monitoring** — Track up to 5 concurrent AWS SSO sessions simultaneously. Each profile gets its own countdown timer, health check cycle, and status indicator. Sessions are automatically restored when the app launches.
+
+**Intelligent session management** — Dual-layer token tracking monitors both role credentials (~1h lifespan) and SSO session tokens (~8h lifespan) independently. Proactive credential refresh kicks in 15 minutes before expiry, keeping `~/.aws/cli/cache` fresh for tools like Terraform and AWS SDKs. Health checks run every 5 minutes via `sts get-caller-identity` to catch dead sessions early.
+
+**Redesigned notifications** — Per-profile expiry warnings at configurable thresholds (1h, 30m, 10m, 5m, 1m) with actionable "Refresh" buttons. Notification deduplication prevents spam — each profile is rate-limited to one notification per 60 seconds.
+
+**Color-coded status system** — Green pulsing dot for active sessions, red for expired, gray for disconnected. Status is visible at a glance in both the menu bar icon and per-profile rows.
+
+**App-to-profile binding** — Bind shell commands (`terraform`, `cdk`, `npm`) to specific AWS profiles. Generates shell integration functions that inject `AWS_PROFILE` per command — no global shell exports.
+
+**New liquid glass app icon** — Designed with Icon Composer for macOS Sequoia.
+
+**Build from source** — New `build.sh` script lets anyone clone the repo and build without opening Xcode.
+
+### [Full Release Notes](Release%20Notes.md)
+
 ## Features
 
 ### Multi-Profile Session Management
