@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0E202B614C324AB0AF9B2144 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7A2FC4B30944F839547EAF5 /* SettingsView.swift */; };
 		1A1EA61B2D9861FB00294D9A /* SSOTokenManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1EA61A2D9861F500294D9A /* SSOTokenManager.swift */; };
 		1A1EA61C2D9861FB00294D9A /* SSOTokenManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1EA61A2D9861F500294D9A /* SSOTokenManager.swift */; };
 		1A1EA61D2D9861FB00294D9A /* SSOTokenManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1EA61A2D9861F500294D9A /* SSOTokenManager.swift */; };
@@ -23,9 +24,6 @@
 		1A96BB632D78823700C64C80 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1A96BB522D78823700C64C80 /* Assets.xcassets */; };
 		1A96BB682D78823700C64C80 /* ConfigManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB562D78823700C64C80 /* ConfigManager.swift */; };
 		1A96BB6A2D78823700C64C80 /* SSOProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB5E2D78823700C64C80 /* SSOProfile.swift */; };
-		839AE00697114A448ECD6D3A /* ProfileSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71F92D750D5F4EA58B1DAE73 /* ProfileSession.swift */; };
-		0E202B614C324AB0AF9B2144 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7A2FC4B30944F839547EAF5 /* SettingsView.swift */; };
-		C166BF61FF324729BC1ED47D /* AppProfileBindingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E03473DE2B9418B8915E45F /* AppProfileBindingManager.swift */; };
 		1A96BB6B2D78823700C64C80 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB512D78823700C64C80 /* AppDelegate.swift */; };
 		1A96BB6C2D78823700C64C80 /* WindowManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB602D78823700C64C80 /* WindowManager.swift */; };
 		1A96BB6D2D78823700C64C80 /* Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB572D78823700C64C80 /* Constants.swift */; };
@@ -61,6 +59,8 @@
 		1A96BB962D7B429D00C64C80 /* ProfileHistoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB952D7B429800C64C80 /* ProfileHistoryManager.swift */; };
 		1A96BB972D7B429D00C64C80 /* ProfileHistoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB952D7B429800C64C80 /* ProfileHistoryManager.swift */; };
 		1A96BB982D7B429D00C64C80 /* ProfileHistoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB952D7B429800C64C80 /* ProfileHistoryManager.swift */; };
+		839AE00697114A448ECD6D3A /* ProfileSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71F92D750D5F4EA58B1DAE73 /* ProfileSession.swift */; };
+		C166BF61FF324729BC1ED47D /* AppProfileBindingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E03473DE2B9418B8915E45F /* AppProfileBindingManager.swift */; };
 		F27D5A482D96E07A00261F26 /* ManagerModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F27D5A472D96E07500261F26 /* ManagerModels.swift */; };
 		F27D5A492D96E07A00261F26 /* ManagerModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F27D5A472D96E07500261F26 /* ManagerModels.swift */; };
 		F27D5A4A2D96E07A00261F26 /* ManagerModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F27D5A472D96E07500261F26 /* ManagerModels.swift */; };
@@ -101,15 +101,15 @@
 		1A96BB5A2D78823700C64C80 /* MenuBarManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarManager.swift; sourceTree = "<group>"; };
 		1A96BB5D2D78823700C64C80 /* SessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionManager.swift; sourceTree = "<group>"; };
 		1A96BB5E2D78823700C64C80 /* SSOProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOProfile.swift; sourceTree = "<group>"; };
-		71F92D750D5F4EA58B1DAE73 /* ProfileSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileSession.swift; sourceTree = "<group>"; };
-		E7A2FC4B30944F839547EAF5 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		7E03473DE2B9418B8915E45F /* AppProfileBindingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppProfileBindingManager.swift; sourceTree = "<group>"; };
 		1A96BB602D78823700C64C80 /* WindowManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowManager.swift; sourceTree = "<group>"; };
 		1A96BB952D7B429800C64C80 /* ProfileHistoryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileHistoryManager.swift; sourceTree = "<group>"; };
 		1A97FA732D765E300059C29D /* AWS CLI Gateway.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "AWS CLI Gateway.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A97FA842D765E310059C29D /* AWS CLI GatewayTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "AWS CLI GatewayTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A97FA8E2D765E310059C29D /* AWS CLI GatewayUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "AWS CLI GatewayUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		1ACB671D2E7889B1002EA9F1 /* AWS CLI GatewayRelease.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "AWS CLI GatewayRelease.entitlements"; sourceTree = "<group>"; };
+		71F92D750D5F4EA58B1DAE73 /* ProfileSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileSession.swift; sourceTree = "<group>"; };
+		7E03473DE2B9418B8915E45F /* AppProfileBindingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppProfileBindingManager.swift; sourceTree = "<group>"; };
+		E7A2FC4B30944F839547EAF5 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		F27D5A472D96E07500261F26 /* ManagerModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagerModels.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -561,6 +561,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = "AWS CLI Gateway/AWS_CLI_Gateway.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
@@ -597,6 +598,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = "AWS CLI Gateway/AWS CLI GatewayRelease.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
