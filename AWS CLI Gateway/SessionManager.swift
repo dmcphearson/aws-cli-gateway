@@ -6,20 +6,11 @@ class SessionManager {
 
     // MARK: - Properties
 
-    // Multi-profile session state
     private(set) var activeSessions: [String: ProfileSession] = [:]
     private var monitoringTasks: [String: Task<Void, Never>] = [:]
     private var sessionTimer: Timer?
 
-    // Legacy single-profile properties (retained for backward compat during migration)
-    private var activeProfile: String?
-    private var expiryDate: Date?
-    private var ssoTokenExpiryDate: Date?
-    private var lastHealthCheck: Date?
-    private var isCleanDisconnect: Bool = false
-    private static var findingCredentials = false
-    private var monitoringTask: Task<Void, Never>?
-    private var isMonitoring: Bool = false
+    var activeProfile: String? { activeSessions.keys.sorted().first }
 
     private let profileCacheFileMapLock = NSLock()
     private var _profileCacheFileMap: [String: String] = [:]
@@ -40,11 +31,9 @@ class SessionManager {
     }
 
     // Callbacks
-    var onSessionUpdate: ((String) -> Void)?
     var onSessionsUpdated: (([String: ProfileSession]) -> Void)?
     var onTokenExpirationWarning: ((String, TimeInterval) -> Void)?
 
-    // Constants
     private let tokenExpirationWarningThreshold: TimeInterval = 5 * 60
     private let tokenExpirationCriticalThreshold: TimeInterval = 60
 
@@ -146,14 +135,6 @@ class SessionManager {
             status: .connecting
         )
 
-        // Reset state
-        self.isCleanDisconnect = false
-        self.isMonitoring = true
-        if self.activeProfile == nil { self.activeProfile = profileName }
-
-        // Update UI immediately to indicate we're working on it
-        self.onSessionUpdate?("Session: Connecting...")
-
         // Create a new task for this profile
         let task = Task { [weak self] in
             guard let self = self else { return }
@@ -176,12 +157,7 @@ class SessionManager {
                     let ssoExpiry = SSOTokenManager.shared.getSSOTokenExpiry(forProfile: profileName)
 
                     await MainActor.run {
-                        if !Task.isCancelled && self.isMonitoring {
-                            if self.activeProfile == profileName {
-                                self.expiryDate = ssoToken.expiresAt
-                                self.ssoTokenExpiryDate = ssoExpiry
-                                self.lastHealthCheck = Date()
-                            }
+                        if !Task.isCancelled {
                             self.activeSessions[profileName] = ProfileSession(
                                 profileName: profileName,
                                 roleCredExpiryDate: ssoToken.expiresAt,
@@ -209,12 +185,7 @@ class SessionManager {
                 let ssoExpiry = SSOTokenManager.shared.getSSOTokenExpiry(forProfile: profileName)
 
                 await MainActor.run {
-                    if !Task.isCancelled && self.isMonitoring {
-                        if self.activeProfile == profileName {
-                            self.expiryDate = ssoToken.expiresAt
-                            self.ssoTokenExpiryDate = ssoExpiry
-                            self.lastHealthCheck = Date()
-                        }
+                    if !Task.isCancelled {
                         self.activeSessions[profileName] = ProfileSession(
                             profileName: profileName,
                             roleCredExpiryDate: ssoToken.expiresAt,
@@ -229,33 +200,22 @@ class SessionManager {
                 return
             }
 
-            // Check for cancellation
             if Task.isCancelled { return }
 
             // If still no credentials, try to create them by running a command
             do {
                 _ = try await CommandRunner.shared.runCommand("aws", args: ["sts", "get-caller-identity", "--profile", profileName])
-
-                // Check for cancellation
                 if Task.isCancelled { return }
 
                 // Try again after refreshing
                 if let cacheFilename = await self.findMatchingCacheFile(forProfile: profileName) {
-                    // Check for cancellation
                     if Task.isCancelled { return }
-
                     self.profileCacheFileMap[profileName] = cacheFilename
                     if let ssoToken = try? await self.readCredentialsFromCacheFile(cacheFilename) {
-                        // Check for cancellation
                         if Task.isCancelled { return }
-
                         let ssoExpiry = SSOTokenManager.shared.getSSOTokenExpiry(forProfile: profileName)
                         await MainActor.run {
-                            if !Task.isCancelled && self.isMonitoring {
-                                if self.activeProfile == profileName {
-                                    self.expiryDate = ssoToken.expiresAt
-                                    self.ssoTokenExpiryDate = ssoExpiry
-                                }
+                            if !Task.isCancelled {
                                 self.activeSessions[profileName] = ProfileSession(
                                     profileName: profileName,
                                     roleCredExpiryDate: ssoToken.expiresAt,
@@ -272,21 +232,14 @@ class SessionManager {
                     }
                 }
 
-                // Check for cancellation
                 if Task.isCancelled { return }
 
-                // Final fallback - try legacy approach one more time
+                // Final fallback - legacy approach
                 if let ssoToken = try? await self.findCLICredentialsForProfile(profileName) {
-                    // Check for cancellation
                     if Task.isCancelled { return }
-
                     let ssoExpiry = SSOTokenManager.shared.getSSOTokenExpiry(forProfile: profileName)
                     await MainActor.run {
-                        if !Task.isCancelled && self.isMonitoring {
-                            if self.activeProfile == profileName {
-                                self.expiryDate = ssoToken.expiresAt
-                                self.ssoTokenExpiryDate = ssoExpiry
-                            }
+                        if !Task.isCancelled {
                             self.activeSessions[profileName] = ProfileSession(
                                 profileName: profileName,
                                 roleCredExpiryDate: ssoToken.expiresAt,
@@ -301,31 +254,21 @@ class SessionManager {
                     return
                 }
 
-                // If we get here, no credentials were found
                 await MainActor.run {
-                    if !Task.isCancelled && self.isMonitoring {
-                        self.expiryDate = nil
+                    if !Task.isCancelled {
                         self.activeSessions[profileName]?.status = .expired
-                        self.onSessionUpdate?("Session: Not authenticated")
                         self.onSessionsUpdated?(self.activeSessions)
                     }
                 }
             } catch {
                 await MainActor.run {
-                    if !Task.isCancelled && self.isMonitoring {
+                    if !Task.isCancelled {
                         let errorMessage = self.parseAWSError(error)
                         print("SessionManager: Failed to refresh credentials: \(errorMessage)")
-                        self.expiryDate = nil
                         self.activeSessions[profileName]?.status = .expired
                         self.onSessionsUpdated?(self.activeSessions)
-
                         if errorMessage.contains("Token is expired") || errorMessage.contains("TokenExpired") {
-                            self.onSessionUpdate?("Session: Token expired")
                             self.onTokenExpirationWarning?(profileName, 0)
-                        } else if errorMessage.contains("UnauthorizedOperation") || errorMessage.contains("InvalidUserID") {
-                            self.onSessionUpdate?("Session: Auth failed")
-                        } else {
-                            self.onSessionUpdate?("Session: Connection error")
                         }
                     }
                 }
@@ -373,38 +316,26 @@ class SessionManager {
 
     // MARK: - Token Expiration Checking
 
-    /// Proactively checks if the token is about to expire and handles it appropriately
     func checkTokenExpiration(for profileName: String) async -> Bool {
-        guard let expiryDate = self.expiryDate else {
-            // No token information available
+        guard let session = activeSessions[profileName],
+              let expiry = session.effectiveExpiry else {
             return false
         }
 
-        let now = Date()
-        let timeUntilExpiry = expiryDate.timeIntervalSince(now)
+        let timeUntilExpiry = expiry.timeIntervalSinceNow
 
         if timeUntilExpiry <= 0 {
-            // Token has already expired
-            await MainActor.run {
-                self.onSessionUpdate?("Session: Expired")
-                self.onTokenExpirationWarning?(profileName, 0)
-            }
+            await MainActor.run { self.onTokenExpirationWarning?(profileName, 0) }
             return false
         } else if timeUntilExpiry <= tokenExpirationCriticalThreshold {
-            // Token expires very soon - critical warning
-            await MainActor.run {
-                self.onTokenExpirationWarning?(profileName, timeUntilExpiry)
-            }
+            await MainActor.run { self.onTokenExpirationWarning?(profileName, timeUntilExpiry) }
             return false
         } else if timeUntilExpiry <= tokenExpirationWarningThreshold {
-            // Token expires soon - warning
-            await MainActor.run {
-                self.onTokenExpirationWarning?(profileName, timeUntilExpiry)
-            }
-            return true // Still valid but warn user
+            await MainActor.run { self.onTokenExpirationWarning?(profileName, timeUntilExpiry) }
+            return true
         }
 
-        return true // Token is still valid
+        return true
     }
 
     /// Attempts to refresh the SSO session for a profile.
@@ -429,8 +360,6 @@ class SessionManager {
                 let ssoExpiry = SSOTokenManager.shared.getSSOTokenExpiry(forProfile: profileName)
 
                 await MainActor.run {
-                    self.expiryDate = token.expiresAt
-                    self.ssoTokenExpiryDate = ssoExpiry
                     self.activeSessions[profileName] = ProfileSession(
                         profileName: profileName,
                         roleCredExpiryDate: token.expiresAt,
@@ -440,20 +369,17 @@ class SessionManager {
                         cacheFileName: cacheFilename
                     )
                     self.startSessionTimer()
-                    self.onSessionUpdate?("Session: Active")
                     self.onSessionsUpdated?(self.activeSessions)
                 }
                 return true
             }
 
-            // sts succeeded but couldn't read updated creds — still counts as success
             return true
 
         } catch {
             let errorString = "\(error)"
             print("SessionManager: Silent refresh failed for \(profileName): \(errorString)")
 
-            // If it's a token/auth error, the refresh token is dead — need browser login
             let needsBrowser = errorString.contains("ExpiredToken") ||
                 errorString.contains("InvalidIdentityToken") ||
                 errorString.contains("The SSO session") ||
@@ -461,14 +387,10 @@ class SessionManager {
                 errorString.contains("UnauthorizedAccess") ||
                 errorString.contains("SSOTokenLoadError")
 
-            if !needsBrowser {
-                // Network error or transient issue — don't open browser
-                return false
-            }
+            if !needsBrowser { return false }
         }
 
-        // Step 2: Refresh token is dead — fall back to browser login
-        print("SessionManager: Refresh token expired for \(profileName), falling back to browser login")
+        // Refresh token is dead — fall back to browser login
         do {
             _ = try await CommandRunner.shared.runCommand("aws", args: ["sso", "login", "--profile", profileName])
             try await Task.sleep(nanoseconds: 1_000_000_000)
@@ -482,8 +404,6 @@ class SessionManager {
                 let ssoExpiry = SSOTokenManager.shared.getSSOTokenExpiry(forProfile: profileName)
 
                 await MainActor.run {
-                    self.expiryDate = token.expiresAt
-                    self.ssoTokenExpiryDate = ssoExpiry
                     self.activeSessions[profileName] = ProfileSession(
                         profileName: profileName,
                         roleCredExpiryDate: token.expiresAt,
@@ -493,14 +413,13 @@ class SessionManager {
                         cacheFileName: cacheFilename
                     )
                     self.startSessionTimer()
-                    self.onSessionUpdate?("Session: Active")
                     self.onSessionsUpdated?(self.activeSessions)
                 }
                 return true
             }
             return false
         } catch {
-            print("SessionManager: Browser login also failed for \(profileName): \(error)")
+            print("SessionManager: Browser login failed for \(profileName): \(error)")
             await MainActor.run {
                 self.activeSessions[profileName]?.status = .expired
                 self.onSessionsUpdated?(self.activeSessions)
@@ -696,42 +615,8 @@ class SessionManager {
         }
     }
 
-    // Find the most recently updated cache file - useful after running a command
-    private func findMostRecentlyUpdatedCacheFile() async throws -> String? {
-        let homeDir = FileManager.default.homeDirectoryForCurrentUser
-        let cliCachePath = homeDir.appendingPathComponent(".aws/cli/cache")
 
-        guard let cacheFiles = try? FileManager.default.contentsOfDirectory(at: cliCachePath, includingPropertiesForKeys: [.contentModificationDateKey], options: []) else {
-            return nil
-        }
-
-        // Filter out non-JSON files and .DS_Store
-        let jsonFiles = cacheFiles.filter { $0.pathExtension == "json" && $0.lastPathComponent != ".DS_Store" }
-
-        // Get modification dates
-        var filesWithDates: [(URL, Date)] = []
-        for file in jsonFiles {
-            if let attributes = try? FileManager.default.attributesOfItem(atPath: file.path),
-               let modDate = attributes[.modificationDate] as? Date {
-                filesWithDates.append((file, modDate))
-            }
-        }
-
-        // Sort by modification date (newest first)
-        let sortedFiles = filesWithDates.sorted { $0.1 > $1.1 }
-
-        // Return the most recently modified file name
-        return sortedFiles.first?.0.lastPathComponent
-    }
-
-    // Method to find CLI credentials for a profile (legacy approach)
     private func findCLICredentialsForProfile(_ profileName: String) async throws -> SSOToken? {
-        if SessionManager.findingCredentials {
-            return nil
-        }
-
-        SessionManager.findingCredentials = true
-        defer { SessionManager.findingCredentials = false }
 
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
         let cliCachePath = homeDir.appendingPathComponent(".aws/cli/cache")
@@ -931,11 +816,6 @@ class SessionManager {
     }
 
     func cleanDisconnect() {
-        isCleanDisconnect = true
-        monitoringTask?.cancel()
-        monitoringTask = nil
-        isMonitoring = false
-
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.activeSessions.removeAll()
@@ -943,42 +823,24 @@ class SessionManager {
             self.monitoringTasks.removeAll()
             self.sessionTimer?.invalidate()
             self.sessionTimer = nil
-            self.activeProfile = nil
-            self.expiryDate = nil
-            self.onSessionUpdate?("Session: --:--:--")
             self.onSessionsUpdated?(self.activeSessions)
         }
     }
 
-    /// Disconnect a single profile without affecting others
     func cleanDisconnect(for profileName: String) {
         activeSessions.removeValue(forKey: profileName)
         monitoringTasks[profileName]?.cancel()
         monitoringTasks.removeValue(forKey: profileName)
 
-        // If this was the active (primary) profile, pick the next one or clear
-        if activeProfile == profileName {
-            activeProfile = activeSessions.keys.first
-            expiryDate = activeSessions.values.first?.roleCredExpiryDate
-            ssoTokenExpiryDate = activeSessions.values.first?.ssoTokenExpiryDate
-        }
-
-        // Stop timer entirely if no sessions remain
         if activeSessions.isEmpty {
-            isMonitoring = false
             sessionTimer?.invalidate()
             sessionTimer = nil
-            onSessionUpdate?("Session: --:--:--")
         }
 
         onSessionsUpdated?(activeSessions)
     }
 
     func stopMonitoring() {
-        monitoringTask?.cancel()
-        monitoringTask = nil
-        isMonitoring = false
-
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.activeSessions.removeAll()
@@ -986,32 +848,19 @@ class SessionManager {
             self.monitoringTasks.removeAll()
             self.sessionTimer?.invalidate()
             self.sessionTimer = nil
-            self.activeProfile = nil
-            self.expiryDate = nil
-            self.onSessionUpdate?("Session: --:--:--")
             self.onSessionsUpdated?(self.activeSessions)
 
-            if !self.isCleanDisconnect {
-                NotificationCenter.default.post(
-                    name: Notification.Name(Constants.Notifications.sessionMonitoringStopped),
-                    object: nil
-                )
-            }
-            self.isCleanDisconnect = false
+            NotificationCenter.default.post(
+                name: Notification.Name(Constants.Notifications.sessionMonitoringStopped),
+                object: nil
+            )
         }
     }
 
-    /// Stop monitoring for a single profile
     func stopMonitoring(for profileName: String) {
         activeSessions.removeValue(forKey: profileName)
         monitoringTasks[profileName]?.cancel()
         monitoringTasks.removeValue(forKey: profileName)
-
-        if activeProfile == profileName {
-            activeProfile = activeSessions.keys.first
-            expiryDate = activeSessions.values.first?.roleCredExpiryDate
-            ssoTokenExpiryDate = activeSessions.values.first?.ssoTokenExpiryDate
-        }
 
         if activeSessions.isEmpty {
             stopMonitoring()
@@ -1025,14 +874,12 @@ class SessionManager {
         }
     }
 
-
     func renewSession() async throws {
         guard let profile = activeProfile else {
             throw SessionError.noActiveProfile
         }
 
-        // Cancel existing monitoring task
-        monitoringTask?.cancel()
+        monitoringTasks[profile]?.cancel()
 
         do {
             // 1) Logout old session
@@ -1067,71 +914,25 @@ class SessionManager {
     // MARK: - Private Methods
 
     private func startSessionTimer() {
-        // Ensure we're on the main thread
         assert(Thread.isMainThread, "startSessionTimer must be called on the main thread")
+        guard !activeSessions.isEmpty else { return }
 
-        // Only start timer if we're in monitoring state
-        guard isMonitoring else {
-            return
-        }
-
-        // Invalidate any existing timer
         sessionTimer?.invalidate()
-        sessionTimer = nil
-
-        // Create a new timer that fires every second
         self.sessionTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            guard let self = self, self.isMonitoring else { return }
+            guard let self = self, !self.activeSessions.isEmpty else { return }
             self.checkSessionStatus()
         }
-
-        // Make sure timer continues to fire when scrolling
         RunLoop.current.add(self.sessionTimer!, forMode: .common)
-
-        // Ensure UI is updated immediately with correct time format
-        if let expiry = self.expiryDate {
-            let remaining = expiry.timeIntervalSinceNow
-            let hours = Int(remaining) / 3600
-            let minutes = (Int(remaining) % 3600) / 60
-            let seconds = Int(remaining) % 60
-            let timeString = String(format: "Session: %02d:%02d:%02d", hours, minutes, seconds)
-            self.onSessionUpdate?(timeString)
-        }
-
-        // Run full status check after UI update
         self.checkSessionStatus()
     }
     
-    private func createProfileIdentifier(for ssoProfile: SSOProfile) -> String {
-        // Combine distinctive properties to create a unique identifier
-        let identifierString = "\(ssoProfile.startUrl)_\(ssoProfile.accountId)_\(ssoProfile.roleName)_\(ssoProfile.region)"
 
-        // Create a SHA256 hash of this string to get a consistent identifier
-        let data = Data(identifierString.utf8)
-        var digest = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
-        data.withUnsafeBytes {
-            _ = CC_SHA256($0.baseAddress, CC_LONG(data.count), &digest)
-        }
-
-        // Convert to hex string
-        return digest.map { String(format: "%02x", $0) }.joined()
-    }
-
-    private func handleExpiredSession() {
-        guard !isCleanDisconnect else { return }  // Exit early if clean disconnect
-
-        stopMonitoring()
-        NotificationCenter.default.post(
-            name: Notification.Name(Constants.Notifications.sessionExpired),
-            object: nil
-        )
-    }
 
     private var expiryRefreshTime: Date? = nil
     private let healthCheckInterval: TimeInterval = 300 // 5 minutes
 
     private func checkSessionStatus() {
-        guard isMonitoring, !isCleanDisconnect else { return }
+        guard !activeSessions.isEmpty else { return }
 
         let now = Date()
 
@@ -1141,7 +942,7 @@ class SessionManager {
 
             for (profileName, session) in activeSessions {
                 Task { [weak self] in
-                    guard let self = self, self.isMonitoring else { return }
+                    guard let self = self, !self.activeSessions.isEmpty else { return }
 
                     var updatedRoleExpiry: Date? = session.roleCredExpiryDate
                     if let cacheFilename = session.cacheFileName ?? self.profileCacheFileMap[profileName],
@@ -1152,15 +953,9 @@ class SessionManager {
                     let updatedSSOExpiry = SSOTokenManager.shared.getSSOTokenExpiry(forProfile: profileName)
 
                     await MainActor.run {
-                        guard self.isMonitoring, self.activeSessions[profileName] != nil else { return }
+                        guard self.activeSessions[profileName] != nil else { return }
                         self.activeSessions[profileName]?.roleCredExpiryDate = updatedRoleExpiry
                         self.activeSessions[profileName]?.ssoTokenExpiryDate = updatedSSOExpiry
-
-                        // Keep legacy single-profile state in sync
-                        if profileName == self.activeProfile {
-                            self.expiryDate = updatedRoleExpiry
-                            self.ssoTokenExpiryDate = updatedSSOExpiry
-                        }
                     }
                 }
             }
@@ -1174,10 +969,9 @@ class SessionManager {
                 let sessionLastCheck = session.lastHealthCheck ?? .distantPast
                 if now.timeIntervalSince(sessionLastCheck) > healthCheckInterval {
                     activeSessions[profileName]?.lastHealthCheck = now
-                    if activeProfile == profileName { lastHealthCheck = now }
 
                     Task { [weak self] in
-                        guard let self = self, self.isMonitoring else { return }
+                        guard let self = self, !self.activeSessions.isEmpty else { return }
                         do {
                             _ = try await CommandRunner.shared.runCommand("aws", args: ["sts", "get-caller-identity", "--profile", profileName])
                         } catch {
@@ -1186,7 +980,7 @@ class SessionManager {
                                errorString.contains("UnauthorizedAccess") || errorString.contains("The SSO session") {
                                 print("SessionManager: Health check failed for \(profileName): \(errorString)")
                                 await MainActor.run {
-                                    if self.isMonitoring {
+                                    if !self.activeSessions.isEmpty {
                                         self.activeSessions[profileName]?.status = .expired
                                         self.onSessionsUpdated?(self.activeSessions)
                                         NotificationCenter.default.post(
@@ -1214,7 +1008,7 @@ class SessionManager {
                roleExpiry.timeIntervalSinceNow <= proactiveRefreshThreshold,
                session.status == .active {
                 Task { [weak self] in
-                    guard let self = self, self.isMonitoring else { return }
+                    guard let self = self, !self.activeSessions.isEmpty else { return }
                     _ = try? await CommandRunner.shared.runCommand("aws", args: ["sts", "get-caller-identity", "--profile", profileName])
                 }
                 break // One refresh per tick
@@ -1238,33 +1032,22 @@ class SessionManager {
             }
         }
 
-        // Format time string for the primary profile
-        let effectiveExpiry: Date? = expiryDate ?? ssoTokenExpiryDate
-        guard let expiration = effectiveExpiry else {
-            self.onSessionsUpdated?(activeSessions)
-            return
-        }
-
-        let remaining = max(0, expiration.timeIntervalSinceNow)
-        let hours = Int(remaining) / 3600
-        let minutes = (Int(remaining) % 3600) / 60
-        let seconds = Int(remaining) % 60
-        let timeString = String(format: "Session: %02d:%02d:%02d", hours, minutes, seconds)
-
-        self.onSessionUpdate?(timeString)
         self.onSessionsUpdated?(activeSessions)
 
-        NotificationCenter.default.post(
-            name: Notification.Name(Constants.Notifications.sessionTimeUpdated),
-            object: nil,
-            userInfo: [Constants.NotificationKeys.timeRemaining: remaining]
-        )
-
-        checkWarningThresholds(remaining)
+        // Post time update for the primary profile
+        if let primarySession = activeSessions.values.first,
+           let expiry = primarySession.effectiveExpiry {
+            let remaining = max(0, expiry.timeIntervalSinceNow)
+            NotificationCenter.default.post(
+                name: Notification.Name(Constants.Notifications.sessionTimeUpdated),
+                object: nil,
+                userInfo: [Constants.NotificationKeys.timeRemaining: remaining]
+            )
+            checkWarningThresholds(remaining)
+        }
     }
-    
+
     private func checkWarningThresholds(_ remaining: TimeInterval) {
-        guard !isCleanDisconnect else { return }  // Exit early if clean disconnect
 
         for threshold in Constants.Session.warningThresholds {
             if remaining <= threshold && remaining > threshold - 1 {
