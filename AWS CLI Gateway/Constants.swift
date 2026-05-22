@@ -25,13 +25,13 @@ enum Constants {
 
     // MARK: - Notifications
     enum Notifications {
-        static let sessionMonitoringStopped = "com.awssso.gateway.sessionMonitoringStopped"
-        static let sessionTimeUpdated = "com.awssso.gateway.sessionTimeUpdated"
-        static let sessionWarning = "com.awssso.gateway.sessionWarning"
-        static let sessionExpired = "com.awssso.gateway.sessionExpired"
-        static let sessionRenewed = "com.awssso.gateway.sessionRenewed"
-        static let profilesUpdated = "com.awssso.gateway.profilesUpdated"
-        static let profileConnected = "com.awssso.gateway.profileConnected"
+        static let sessionMonitoringStopped = "me.mcphearson.aws-cli-gateway.sessionMonitoringStopped"
+        static let sessionTimeUpdated = "me.mcphearson.aws-cli-gateway.sessionTimeUpdated"
+        static let sessionWarning = "me.mcphearson.aws-cli-gateway.sessionWarning"
+        static let sessionExpired = "me.mcphearson.aws-cli-gateway.sessionExpired"
+        static let sessionRenewed = "me.mcphearson.aws-cli-gateway.sessionRenewed"
+        static let profilesUpdated = "me.mcphearson.aws-cli-gateway.profilesUpdated"
+        static let profileConnected = "me.mcphearson.aws-cli-gateway.profileConnected"
     }
 
     // MARK: - Notification Keys
