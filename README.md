@@ -88,14 +88,6 @@ gateway debug
 - AWS CLI v2 installed and configured
 - AWS SSO configured for your organization
 
-## Screenshots
-
-<img src="screenshots/Menu Bar.png" width="75%">
-
-<img src="screenshots/Session Timer.png" width="75%">
-
-<img src="screenshots/Terminal.png" width="75%">
-
 ## Contributing
 
 Contributions are welcome. Please open an issue or pull request.
