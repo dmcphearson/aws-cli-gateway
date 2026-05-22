@@ -22,8 +22,6 @@ Version 1.0 is a ground-up redesign of AWS CLI Gateway.
 
 **Color-coded status system** — Green pulsing dot for active sessions, red for expired, gray for disconnected. Status is visible at a glance in both the menu bar icon and per-profile rows.
 
-**App-to-profile binding** — Bind shell commands (`terraform`, `cdk`, `npm`) to specific AWS profiles. Generates shell integration functions that inject `AWS_PROFILE` per command — no global shell exports.
-
 **New liquid glass app icon** — Designed with Icon Composer for macOS Sequoia.
 
 **Build from source** — New `build.sh` script lets anyone clone the repo and build without opening Xcode.
@@ -48,7 +46,6 @@ Version 1.0 is a ground-up redesign of AWS CLI Gateway.
 ### Profile Management
 - **SSO Profiles**: Create profiles with permission set management
 - **IAM Role Profiles**: Assume roles from source SSO profiles
-- **App-to-Profile Binding**: Bind specific commands (e.g., `terraform`, `npm`) to profiles via `AWS_PROFILE` injection
 
 ### Terminal Integration
 - `gateway` CLI command routes AWS commands through your connected profile
@@ -109,6 +106,16 @@ gateway debug
 - macOS 15.2 (Sequoia) or later
 - AWS CLI v2 installed and configured
 - AWS SSO configured for your organization
+
+## Roadmap
+
+Features I'm exploring for future releases:
+
+- **Keychain-backed token storage** — Store SSO refresh tokens in macOS Keychain (encrypted at rest, Touch ID protected) instead of plaintext JSON in `~/.aws/sso/cache`
+- **App-to-profile binding** — Bind shell commands (`terraform`, `cdk`, `npm`) to specific profiles with per-command `AWS_PROFILE` injection
+- **Profile grouping** — Organize profiles by AWS organization or team for users managing 15+ profiles
+- **Direct OAuth refresh** — Call the SSO OIDC endpoint directly instead of shelling out to `aws sts get-caller-identity` for faster silent refresh
+- **Menu bar icon state** — Reflect worst-case session status across all profiles in the status bar icon
 
 ## Contributing
 

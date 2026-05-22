@@ -21,10 +21,6 @@ Major release — complete rebuild of the session management system and UI.
 - Dual-layer expiry tracking: monitors both role credentials (~1h) and SSO session tokens (~8h)
 - Health checks detect dead sessions that still have time on the countdown
 
-### App-to-Profile Binding
-- Bind shell commands (`terraform`, `npm`, `cdk`, etc.) to specific AWS profiles
-- Generates shell integration functions that inject `AWS_PROFILE` per command
-- No global shell exports — profiles are scoped to the bound command only
 
 ### Notifications
 - Per-profile expiry warnings at configurable thresholds (1h, 30m, 10m, 5m, 1m)
