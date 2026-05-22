@@ -4,6 +4,9 @@ import UserNotifications
 class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Ensure app support directory is writable
+        _ = RoleManager.ensureAppSupportDirectory()
+
         // Ensure AWS directory permissions are correct at startup
         ConfigManager.shared.ensureDirectoryPermissions()
         
