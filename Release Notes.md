@@ -1,23 +1,77 @@
-# Release Notes History
+# Release Notes
 
-### Version 0.4.0 Release Notes
+## Version 1.0.0
 
-- **Session Management Improvements**: Added the ability to clear cache for active sessions on quit
-- **New Tools & Settings Menu**: Reorganized options into a dedicated submenu for better organization
-- **Install CLI Tools**: Simplified access to terminal integration (formerly "Install Terminal Commands")
-- **AWS Console Access**: Quickly open the AWS Console for your active session directly from the menu
-- **UI Refinements**: Enhanced menu organization and visual clarity
-- **Official Signing**: App is now signed with an Apple Developer ID for seamless installation
+Major release — complete rebuild of the session management system and UI.
 
-### Version 0.3.0 Release Notes
+### Multi-Profile Sessions
+- Monitor up to 5 concurrent AWS SSO profiles simultaneously
+- Independent per-profile countdown timers, health checks, and refresh
+- Proactive credential refresh when role credentials are within 15 minutes of expiry
+- Automatic session restore on app launch
 
-- **Improved Code Architecture**: Refactored script management into a dedicated manager for better performance
-- **UI Refinements**: Enhanced menu bar experience with more responsive elements
-- **Stability Improvements**: Fixed issues with session management and terminal command handling
+### New Menu Bar UI
+- Replaced NSMenu with a floating NSPanel + SwiftUI interface
+- Expandable profile rows showing region, account ID, and token expiry
+- Per-profile connect, disconnect, and refresh controls inline
+- Color-coded session status (green/red/gray)
 
-### Version 0.2.0 Release Notes
+### Phantom Session Fix
+- Fixed incorrect SSO cache hash computation (now matches botocore: `sha1(sessionName)` for new-style configs, `sha1(startUrl)` for legacy)
+- Dual-layer expiry tracking: monitors both role credentials (~1h) and SSO session tokens (~8h)
+- Health checks detect dead sessions that still have time on the countdown
 
-- **Terminal Integration**: The new ```gateway``` command lets you run AWS CLI commands using your connected profile <br> without specifying ```--profile``` every time
-- **Connected Profile**: Simplified workflow that automatically uses your connected profile in terminal commands
-- **Enhanced Session Management**: Improved session tracking and renewal with more stable performance
-- **Debug Tools**: Added diagnostic features to help troubleshoot profile and session issues
+### App-to-Profile Binding
+- Bind shell commands (`terraform`, `npm`, `cdk`, etc.) to specific AWS profiles
+- Generates shell integration functions that inject `AWS_PROFILE` per command
+- No global shell exports — profiles are scoped to the bound command only
+
+### Notifications
+- Per-profile expiry warnings at configurable thresholds (1h, 30m, 10m, 5m, 1m)
+- 60-second cooldown per profile to prevent notification spam
+- Actionable "Refresh" button on notification banners
+
+### App Icon
+- New liquid glass icon designed with Icon Composer for macOS Sequoia
+
+### Codebase
+- 24% line-of-code reduction (7054 → 5382) with zero features removed
+- Removed 5 orphaned files from prior UI architecture
+- Consolidated duplicate managers into generic `JSONFileStore`
+- Extracted shared ISO8601 date parsing across token managers
+- Added `build.sh` for building from source without Xcode GUI
+- Fixed App Support directory permission error when owned by root
+
+### Breaking Changes
+- Minimum macOS version raised to 15.2 (Sequoia)
+
+---
+
+## Version 0.4.5
+
+- Enhanced UX: Star buttons only appear when there's an active session
+- Improved Session Management: Fixed token synchronization issues
+- Dynamic Menu Layout: Menu width and spacing adjust based on session state
+- Better Error Handling: Resolved infinite loop on expired SSO refresh
+- Visual Polish: Proper spacing and padding
+
+## Version 0.4.0
+
+- Session Management: Clear cache for active sessions on quit
+- Tools & Settings Menu: Reorganized submenu
+- Install CLI Tools: Simplified terminal integration access
+- AWS Console Access: Open console from menu bar
+- Official Apple Developer ID signing
+
+## Version 0.3.0
+
+- Refactored script management
+- Enhanced menu bar responsiveness
+- Stability fixes for session management
+
+## Version 0.2.0
+
+- Terminal Integration: `gateway` command for profile-aware AWS CLI
+- Connected Profile: Auto-uses connected profile in terminal
+- Enhanced Session Management: Improved tracking and renewal
+- Debug Tools: Diagnostic features for troubleshooting

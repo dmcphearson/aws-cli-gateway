@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0E202B614C324AB0AF9B2144 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7A2FC4B30944F839547EAF5 /* SettingsView.swift */; };
 		1A1EA61B2D9861FB00294D9A /* SSOTokenManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1EA61A2D9861F500294D9A /* SSOTokenManager.swift */; };
 		1A1EA61C2D9861FB00294D9A /* SSOTokenManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1EA61A2D9861F500294D9A /* SSOTokenManager.swift */; };
 		1A1EA61D2D9861FB00294D9A /* SSOTokenManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A1EA61A2D9861F500294D9A /* SSOTokenManager.swift */; };
@@ -21,12 +22,7 @@
 		1A7BC9F02D9C991B003A4C1D /* ScriptManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A7BC9ED2D9C9918003A4C1D /* ScriptManager.swift */; };
 		1A96BB622D78823700C64C80 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1A96BB4E2D78823700C64C80 /* Preview Assets.xcassets */; };
 		1A96BB632D78823700C64C80 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1A96BB522D78823700C64C80 /* Assets.xcassets */; };
-		1A96BB642D78823700C64C80 /* ProfilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB5B2D78823700C64C80 /* ProfilesView.swift */; };
-		1A96BB652D78823700C64C80 /* StatusIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB5F2D78823700C64C80 /* StatusIndicator.swift */; };
-		1A96BB662D78823700C64C80 /* ContentViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB592D78823700C64C80 /* ContentViewModel.swift */; };
-		1A96BB672D78823700C64C80 /* SessionCountdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB5C2D78823700C64C80 /* SessionCountdownView.swift */; };
 		1A96BB682D78823700C64C80 /* ConfigManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB562D78823700C64C80 /* ConfigManager.swift */; };
-		1A96BB692D78823700C64C80 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB582D78823700C64C80 /* ContentView.swift */; };
 		1A96BB6A2D78823700C64C80 /* SSOProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB5E2D78823700C64C80 /* SSOProfile.swift */; };
 		1A96BB6B2D78823700C64C80 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB512D78823700C64C80 /* AppDelegate.swift */; };
 		1A96BB6C2D78823700C64C80 /* WindowManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB602D78823700C64C80 /* WindowManager.swift */; };
@@ -36,12 +32,7 @@
 		1A96BB702D78823700C64C80 /* CommandRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB552D78823700C64C80 /* CommandRunner.swift */; };
 		1A96BB712D78823700C64C80 /* MenuBarManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB5A2D78823700C64C80 /* MenuBarManager.swift */; };
 		1A96BB722D78823700C64C80 /* AddProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB502D78823700C64C80 /* AddProfileView.swift */; };
-		1A96BB732D78823700C64C80 /* ProfilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB5B2D78823700C64C80 /* ProfilesView.swift */; };
-		1A96BB742D78823700C64C80 /* StatusIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB5F2D78823700C64C80 /* StatusIndicator.swift */; };
-		1A96BB752D78823700C64C80 /* ContentViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB592D78823700C64C80 /* ContentViewModel.swift */; };
-		1A96BB762D78823700C64C80 /* SessionCountdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB5C2D78823700C64C80 /* SessionCountdownView.swift */; };
 		1A96BB772D78823700C64C80 /* ConfigManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB562D78823700C64C80 /* ConfigManager.swift */; };
-		1A96BB782D78823700C64C80 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB582D78823700C64C80 /* ContentView.swift */; };
 		1A96BB792D78823700C64C80 /* SSOProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB5E2D78823700C64C80 /* SSOProfile.swift */; };
 		1A96BB7A2D78823700C64C80 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB512D78823700C64C80 /* AppDelegate.swift */; };
 		1A96BB7B2D78823700C64C80 /* WindowManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB602D78823700C64C80 /* WindowManager.swift */; };
@@ -55,12 +46,7 @@
 		1A96BB832D78823700C64C80 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1A96BB522D78823700C64C80 /* Assets.xcassets */; };
 		1A96BB842D78823700C64C80 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1A96BB4E2D78823700C64C80 /* Preview Assets.xcassets */; };
 		1A96BB852D78823700C64C80 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1A96BB522D78823700C64C80 /* Assets.xcassets */; };
-		1A96BB862D78823700C64C80 /* ProfilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB5B2D78823700C64C80 /* ProfilesView.swift */; };
-		1A96BB872D78823700C64C80 /* StatusIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB5F2D78823700C64C80 /* StatusIndicator.swift */; };
-		1A96BB882D78823700C64C80 /* ContentViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB592D78823700C64C80 /* ContentViewModel.swift */; };
-		1A96BB892D78823700C64C80 /* SessionCountdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB5C2D78823700C64C80 /* SessionCountdownView.swift */; };
 		1A96BB8A2D78823700C64C80 /* ConfigManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB562D78823700C64C80 /* ConfigManager.swift */; };
-		1A96BB8B2D78823700C64C80 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB582D78823700C64C80 /* ContentView.swift */; };
 		1A96BB8C2D78823700C64C80 /* SSOProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB5E2D78823700C64C80 /* SSOProfile.swift */; };
 		1A96BB8D2D78823700C64C80 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB512D78823700C64C80 /* AppDelegate.swift */; };
 		1A96BB8E2D78823700C64C80 /* WindowManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB602D78823700C64C80 /* WindowManager.swift */; };
@@ -73,6 +59,8 @@
 		1A96BB962D7B429D00C64C80 /* ProfileHistoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB952D7B429800C64C80 /* ProfileHistoryManager.swift */; };
 		1A96BB972D7B429D00C64C80 /* ProfileHistoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB952D7B429800C64C80 /* ProfileHistoryManager.swift */; };
 		1A96BB982D7B429D00C64C80 /* ProfileHistoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A96BB952D7B429800C64C80 /* ProfileHistoryManager.swift */; };
+		839AE00697114A448ECD6D3A /* ProfileSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71F92D750D5F4EA58B1DAE73 /* ProfileSession.swift */; };
+		C166BF61FF324729BC1ED47D /* AppProfileBindingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E03473DE2B9418B8915E45F /* AppProfileBindingManager.swift */; };
 		F27D5A482D96E07A00261F26 /* ManagerModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F27D5A472D96E07500261F26 /* ManagerModels.swift */; };
 		F27D5A492D96E07A00261F26 /* ManagerModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F27D5A472D96E07500261F26 /* ManagerModels.swift */; };
 		F27D5A4A2D96E07A00261F26 /* ManagerModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = F27D5A472D96E07500261F26 /* ManagerModels.swift */; };
@@ -110,20 +98,18 @@
 		1A96BB552D78823700C64C80 /* CommandRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandRunner.swift; sourceTree = "<group>"; };
 		1A96BB562D78823700C64C80 /* ConfigManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigManager.swift; sourceTree = "<group>"; };
 		1A96BB572D78823700C64C80 /* Constants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Constants.swift; sourceTree = "<group>"; };
-		1A96BB582D78823700C64C80 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		1A96BB592D78823700C64C80 /* ContentViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentViewModel.swift; sourceTree = "<group>"; };
 		1A96BB5A2D78823700C64C80 /* MenuBarManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarManager.swift; sourceTree = "<group>"; };
-		1A96BB5B2D78823700C64C80 /* ProfilesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfilesView.swift; sourceTree = "<group>"; };
-		1A96BB5C2D78823700C64C80 /* SessionCountdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionCountdownView.swift; sourceTree = "<group>"; };
 		1A96BB5D2D78823700C64C80 /* SessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionManager.swift; sourceTree = "<group>"; };
 		1A96BB5E2D78823700C64C80 /* SSOProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSOProfile.swift; sourceTree = "<group>"; };
-		1A96BB5F2D78823700C64C80 /* StatusIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusIndicator.swift; sourceTree = "<group>"; };
 		1A96BB602D78823700C64C80 /* WindowManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowManager.swift; sourceTree = "<group>"; };
 		1A96BB952D7B429800C64C80 /* ProfileHistoryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileHistoryManager.swift; sourceTree = "<group>"; };
 		1A97FA732D765E300059C29D /* AWS CLI Gateway.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "AWS CLI Gateway.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A97FA842D765E310059C29D /* AWS CLI GatewayTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "AWS CLI GatewayTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A97FA8E2D765E310059C29D /* AWS CLI GatewayUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "AWS CLI GatewayUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		1ACB671D2E7889B1002EA9F1 /* AWS CLI GatewayRelease.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "AWS CLI GatewayRelease.entitlements"; sourceTree = "<group>"; };
+		71F92D750D5F4EA58B1DAE73 /* ProfileSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileSession.swift; sourceTree = "<group>"; };
+		7E03473DE2B9418B8915E45F /* AppProfileBindingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppProfileBindingManager.swift; sourceTree = "<group>"; };
+		E7A2FC4B30944F839547EAF5 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		F27D5A472D96E07500261F26 /* ManagerModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagerModels.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -190,17 +176,15 @@
 				1A96BB552D78823700C64C80 /* CommandRunner.swift */,
 				1A96BB562D78823700C64C80 /* ConfigManager.swift */,
 				1A96BB572D78823700C64C80 /* Constants.swift */,
-				1A96BB582D78823700C64C80 /* ContentView.swift */,
-				1A96BB592D78823700C64C80 /* ContentViewModel.swift */,
 				1A96BB5A2D78823700C64C80 /* MenuBarManager.swift */,
 				1A7BC9ED2D9C9918003A4C1D /* ScriptManager.swift */,
 				1A96BB952D7B429800C64C80 /* ProfileHistoryManager.swift */,
-				1A96BB5B2D78823700C64C80 /* ProfilesView.swift */,
-				1A96BB5C2D78823700C64C80 /* SessionCountdownView.swift */,
 				1A96BB5D2D78823700C64C80 /* SessionManager.swift */,
 				1A96BB5E2D78823700C64C80 /* SSOProfile.swift */,
+				71F92D750D5F4EA58B1DAE73 /* ProfileSession.swift */,
+				E7A2FC4B30944F839547EAF5 /* SettingsView.swift */,
+				7E03473DE2B9418B8915E45F /* AppProfileBindingManager.swift */,
 				F27D5A472D96E07500261F26 /* ManagerModels.swift */,
-				1A96BB5F2D78823700C64C80 /* StatusIndicator.swift */,
 				1A96BB602D78823700C64C80 /* WindowManager.swift */,
 				1A1EA61A2D9861F500294D9A /* SSOTokenManager.swift */,
 			);
@@ -368,16 +352,14 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				1A96BB642D78823700C64C80 /* ProfilesView.swift in Sources */,
-				1A96BB652D78823700C64C80 /* StatusIndicator.swift in Sources */,
-				1A96BB662D78823700C64C80 /* ContentViewModel.swift in Sources */,
-				1A96BB672D78823700C64C80 /* SessionCountdownView.swift in Sources */,
 				1A96BB982D7B429D00C64C80 /* ProfileHistoryManager.swift in Sources */,
 				F27D5A492D96E07A00261F26 /* ManagerModels.swift in Sources */,
 				1A96BB682D78823700C64C80 /* ConfigManager.swift in Sources */,
 				1A1EA61B2D9861FB00294D9A /* SSOTokenManager.swift in Sources */,
-				1A96BB692D78823700C64C80 /* ContentView.swift in Sources */,
 				1A96BB6A2D78823700C64C80 /* SSOProfile.swift in Sources */,
+				839AE00697114A448ECD6D3A /* ProfileSession.swift in Sources */,
+				0E202B614C324AB0AF9B2144 /* SettingsView.swift in Sources */,
+				C166BF61FF324729BC1ED47D /* AppProfileBindingManager.swift in Sources */,
 				1A96BB6B2D78823700C64C80 /* AppDelegate.swift in Sources */,
 				1A96BB6C2D78823700C64C80 /* WindowManager.swift in Sources */,
 				1A96BB6D2D78823700C64C80 /* Constants.swift in Sources */,
@@ -394,15 +376,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				1A96BB732D78823700C64C80 /* ProfilesView.swift in Sources */,
-				1A96BB742D78823700C64C80 /* StatusIndicator.swift in Sources */,
 				1A7BC9EE2D9C991B003A4C1D /* ScriptManager.swift in Sources */,
-				1A96BB752D78823700C64C80 /* ContentViewModel.swift in Sources */,
-				1A96BB762D78823700C64C80 /* SessionCountdownView.swift in Sources */,
 				1A96BB962D7B429D00C64C80 /* ProfileHistoryManager.swift in Sources */,
 				F27D5A4A2D96E07A00261F26 /* ManagerModels.swift in Sources */,
 				1A96BB772D78823700C64C80 /* ConfigManager.swift in Sources */,
-				1A96BB782D78823700C64C80 /* ContentView.swift in Sources */,
 				1A96BB792D78823700C64C80 /* SSOProfile.swift in Sources */,
 				1A96BB7A2D78823700C64C80 /* AppDelegate.swift in Sources */,
 				1A96BB7B2D78823700C64C80 /* WindowManager.swift in Sources */,
@@ -423,15 +400,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				1A96BB862D78823700C64C80 /* ProfilesView.swift in Sources */,
-				1A96BB872D78823700C64C80 /* StatusIndicator.swift in Sources */,
 				1A7BC9EF2D9C991B003A4C1D /* ScriptManager.swift in Sources */,
-				1A96BB882D78823700C64C80 /* ContentViewModel.swift in Sources */,
-				1A96BB892D78823700C64C80 /* SessionCountdownView.swift in Sources */,
 				1A96BB972D7B429D00C64C80 /* ProfileHistoryManager.swift in Sources */,
 				F27D5A482D96E07A00261F26 /* ManagerModels.swift in Sources */,
 				1A96BB8A2D78823700C64C80 /* ConfigManager.swift in Sources */,
-				1A96BB8B2D78823700C64C80 /* ContentView.swift in Sources */,
 				1A96BB8C2D78823700C64C80 /* SSOProfile.swift in Sources */,
 				1A96BB8D2D78823700C64C80 /* AppDelegate.swift in Sources */,
 				1A96BB8E2D78823700C64C80 /* WindowManager.swift in Sources */,
@@ -589,6 +561,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = "AWS CLI Gateway/AWS_CLI_Gateway.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
@@ -611,8 +584,8 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.2;
-				MARKETING_VERSION = 0.4.5;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.nyitg.AWS-CLI-Gateway";
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "me.mcphearson.aws-cli-gateway";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -625,6 +598,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = "AWS CLI Gateway/AWS CLI GatewayRelease.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
@@ -647,8 +621,8 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.2;
-				MARKETING_VERSION = 0.4.5;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.nyitg.AWS-CLI-Gateway";
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "me.mcphearson.aws-cli-gateway";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -665,8 +639,8 @@
 				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 15.2;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.nyitg.AWS-CLI-GatewayTests";
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "me.mcphearson.aws-cli-gatewayTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
@@ -683,8 +657,8 @@
 				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 15.2;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.nyitg.AWS-CLI-GatewayTests";
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "me.mcphearson.aws-cli-gatewayTests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
@@ -699,8 +673,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.nyitg.AWS-CLI-GatewayUITests";
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "me.mcphearson.aws-cli-gatewayUITests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
@@ -715,8 +689,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.nyitg.AWS-CLI-GatewayUITests";
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "me.mcphearson.aws-cli-gatewayUITests";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;

@@ -1,7 +1,6 @@
 import SwiftUI
 import Cocoa
 
-// MARK: - Liquid Glass Container for Windows
 struct LiquidGlassContainer<Content: View>: View {
     let content: Content
 
@@ -18,26 +17,24 @@ struct LiquidGlassContainer<Content: View>: View {
 
 class WindowManager {
     static let shared = WindowManager()
-    
+
     private var windows: [String: NSWindow] = [:]
-    
+
     private init() {}
-    
+
     func showWindow<Content: View>(
         id: String,
         title: String,
         size: NSSize,
         style: NSWindow.StyleMask = [.titled, .closable],
         content: Content
-    ) where Content: View {
-        // If there's already a window with the same ID, bring it to front instead of making a new one
+    ) {
         if let existingWindow = windows[id] {
             existingWindow.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
         }
 
-        // Create and configure the window with Liquid Glass styling
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: size.width, height: size.height),
             styleMask: style,
@@ -48,72 +45,51 @@ class WindowManager {
         window.title = title
         window.center()
         window.isReleasedWhenClosed = false
-
-        // Apply Liquid Glass window styling
         window.titlebarAppearsTransparent = true
         window.backgroundColor = .windowBackgroundColor
         window.hasShadow = true
+        window.contentView = NSHostingView(rootView: LiquidGlassContainer { content })
 
-        // Wrap content with Liquid Glass container
-        let liquidGlassContent = LiquidGlassContainer {
-            content
-        }
-
-        window.contentView = NSHostingView(rootView: liquidGlassContent)
-
-        // Keep a reference so we can clean up later
-        let delegate = WindowDelegate(id: id)
+        let delegate = WindowDelegate(id: id, manager: self)
+        objc_setAssociatedObject(window, "delegateKey", delegate, .OBJC_ASSOCIATION_RETAIN)
         window.delegate = delegate
-
-        // Associate the delegate with the window
-        objc_setAssociatedObject(
-            window,
-            "delegateKey",
-            delegate,
-            .OBJC_ASSOCIATION_RETAIN
-        )
 
         windows[id] = window
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
-    
+
     func closeWindow(id: String) {
         windows[id]?.close()
         windows.removeValue(forKey: id)
     }
-    
-    // MARK: - Show Add Profile Window
-    func showAddProfileWindow() {
-        showWindow(
-            id: "addProfile",
-            title: "Add AWS Profile",
-            size: NSSize(width: 480, height: 320),
-            style: [.titled, .closable, .fullSizeContentView],
-            content: AddProfileView(onClose: {
-                self.closeWindow(id: "addProfile")
-            })
-        )
+
+    fileprivate func windowClosed(id: String) {
+        windows.removeValue(forKey: id)
     }
 
-    // MARK: - Show Profiles Window
-    func showProfilesWindow() {
+    func showSettingsWindow() {
         showWindow(
-            id: "profiles",
-            title: "AWS Profiles",
-            size: NSSize(width: 450, height: 400),
-            style: [.titled, .closable, .fullSizeContentView],
-            content: ProfilesView()
+            id: "settings",
+            title: "AWS CLI Gateway Settings",
+            size: NSSize(width: 580, height: 450),
+            style: [.titled, .closable, .resizable, .fullSizeContentView],
+            content: SettingsView(onClose: { self.closeWindow(id: "settings") })
         )
     }
 }
 
 private class WindowDelegate: NSObject, NSWindowDelegate {
     let windowId: String
-    
-    init(id: String) {
+    unowned let manager: WindowManager
+
+    init(id: String, manager: WindowManager) {
         self.windowId = id
+        self.manager = manager
         super.init()
     }
-    
+
+    func windowWillClose(_ notification: Notification) {
+        manager.windowClosed(id: windowId)
+    }
 }
