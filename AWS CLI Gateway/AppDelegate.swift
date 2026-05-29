@@ -47,7 +47,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         if response.actionIdentifier == "refresh-action" {
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 MenuBarManager.shared.refreshCurrentSession()
             }
         }
