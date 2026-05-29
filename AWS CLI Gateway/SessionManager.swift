@@ -1,6 +1,7 @@
 import Foundation
 import CommonCrypto
 
+@MainActor
 class SessionManager {
     static let shared = SessionManager()
 
@@ -12,9 +13,11 @@ class SessionManager {
 
     var activeProfile: String? { activeSessions.keys.sorted().first }
 
-    private let profileCacheFileMapLock = NSLock()
-    private var _profileCacheFileMap: [String: String] = [:]
-    private var profileCacheFileMap: [String: String] {
+    // profileCacheFileMap is read/written from `nonisolated` file-I/O helpers
+    // running off the main actor, so it stays lock-guarded and nonisolated.
+    private nonisolated let profileCacheFileMapLock = NSLock()
+    private nonisolated(unsafe) var _profileCacheFileMap: [String: String] = [:]
+    private nonisolated var profileCacheFileMap: [String: String] {
         get {
             profileCacheFileMapLock.lock()
             defer { profileCacheFileMapLock.unlock() }
@@ -46,7 +49,7 @@ class SessionManager {
     }
     
     // REPLACE the existing generateCacheFileHash method with this version
-    private func generateCacheFileHash(profile: SSOProfile) -> String {
+    private nonisolated func generateCacheFileHash(profile: SSOProfile) -> String {
         // Get the session name for this profile
         let sessionName = ConfigManager.shared.getSSOSessionName(for: profile.name)
 
@@ -88,7 +91,7 @@ class SessionManager {
     }
 
     // Keep the original method for fallback
-    private func generateLegacyCacheFileHash(roleName: String, accountId: String, startUrl: String) -> String {
+    private nonisolated func generateLegacyCacheFileHash(roleName: String, accountId: String, startUrl: String) -> String {
         // This is based on your existing method
         let components: [String: String] = [
             "accountId": accountId,
@@ -135,8 +138,10 @@ class SessionManager {
             status: .connecting
         )
 
-        // Create a new task for this profile
-        let task = Task { [weak self] in
+        // Create a new task for this profile. Detached so the file I/O and
+        // synchronous token reads run OFF the main actor; all writes to
+        // activeSessions hop back via MainActor.run.
+        let task = Task.detached { [weak self] in
             guard let self = self else { return }
 
             // Check for cancellation before proceeding
@@ -280,7 +285,7 @@ class SessionManager {
     // MARK: - Error Parsing
 
     /// Parses AWS CLI error messages to provide more meaningful feedback
-    private func parseAWSError(_ error: Error) -> String {
+    private nonisolated func parseAWSError(_ error: Error) -> String {
         let errorString = error.localizedDescription
 
         // Check for common AWS SSO error patterns
@@ -431,18 +436,18 @@ class SessionManager {
     // MARK: - Cache Management
 
     /// Clears all cached file mappings to force fresh discovery
-    func clearCacheFileMappings() {
+    nonisolated func clearCacheFileMappings() {
         profileCacheFileMap.removeAll()
     }
 
     /// Clears cache mapping for a specific profile
-    func clearCacheFileMapping(for profileName: String) {
+    nonisolated func clearCacheFileMapping(for profileName: String) {
         profileCacheFileMap.removeValue(forKey: profileName)
     }
 
     // MARK: - Improved Cache File Finding
 
-    private func findMatchingCacheFile(forProfile profileName: String) async -> String? {
+    private nonisolated func findMatchingCacheFile(forProfile profileName: String) async -> String? {
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
         let cliCachePath = homeDir.appendingPathComponent(".aws/cli/cache")
 
@@ -561,7 +566,7 @@ class SessionManager {
     }
     
     // Read credentials from a specific cache file
-    private func readCredentialsFromCacheFile(_ filename: String) async throws -> SSOToken? {
+    private nonisolated func readCredentialsFromCacheFile(_ filename: String) async throws -> SSOToken? {
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
         let cliCachePath = homeDir.appendingPathComponent(".aws/cli/cache")
         let cacheFilePath = cliCachePath.appendingPathComponent(filename)
@@ -616,7 +621,7 @@ class SessionManager {
     }
 
 
-    private func findCLICredentialsForProfile(_ profileName: String) async throws -> SSOToken? {
+    private nonisolated func findCLICredentialsForProfile(_ profileName: String) async throws -> SSOToken? {
 
         let homeDir = FileManager.default.homeDirectoryForCurrentUser
         let cliCachePath = homeDir.appendingPathComponent(".aws/cli/cache")
@@ -816,15 +821,12 @@ class SessionManager {
     }
 
     func cleanDisconnect() {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            self.activeSessions.removeAll()
-            self.monitoringTasks.values.forEach { $0.cancel() }
-            self.monitoringTasks.removeAll()
-            self.sessionTimer?.invalidate()
-            self.sessionTimer = nil
-            self.onSessionsUpdated?(self.activeSessions)
-        }
+        activeSessions.removeAll()
+        monitoringTasks.values.forEach { $0.cancel() }
+        monitoringTasks.removeAll()
+        sessionTimer?.invalidate()
+        sessionTimer = nil
+        onSessionsUpdated?(activeSessions)
     }
 
     func cleanDisconnect(for profileName: String) {
@@ -841,20 +843,17 @@ class SessionManager {
     }
 
     func stopMonitoring() {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            self.activeSessions.removeAll()
-            self.monitoringTasks.values.forEach { $0.cancel() }
-            self.monitoringTasks.removeAll()
-            self.sessionTimer?.invalidate()
-            self.sessionTimer = nil
-            self.onSessionsUpdated?(self.activeSessions)
+        activeSessions.removeAll()
+        monitoringTasks.values.forEach { $0.cancel() }
+        monitoringTasks.removeAll()
+        sessionTimer?.invalidate()
+        sessionTimer = nil
+        onSessionsUpdated?(activeSessions)
 
-            NotificationCenter.default.post(
-                name: Notification.Name(Constants.Notifications.sessionMonitoringStopped),
-                object: nil
-            )
-        }
+        NotificationCenter.default.post(
+            name: Notification.Name(Constants.Notifications.sessionMonitoringStopped),
+            object: nil
+        )
     }
 
     func stopMonitoring(for profileName: String) {
@@ -898,9 +897,7 @@ class SessionManager {
             _ = try await CommandRunner.shared.runCommand("aws", args: ["sts", "get-caller-identity", "--profile", profile])
 
             // 6) Update expirationDate and restart the timer
-            await MainActor.run { [weak self] in
-                self?.startMonitoring(for: profile)
-            }
+            startMonitoring(for: profile)
 
             NotificationCenter.default.post(
                 name: Notification.Name(Constants.Notifications.sessionRenewed),
@@ -919,8 +916,12 @@ class SessionManager {
 
         sessionTimer?.invalidate()
         self.sessionTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            guard let self = self, !self.activeSessions.isEmpty else { return }
-            self.checkSessionStatus()
+            // The timer fires on the main RunLoop, so we are genuinely on the
+            // main actor — assume isolation to call the @MainActor methods.
+            MainActor.assumeIsolated {
+                guard let self = self, !self.activeSessions.isEmpty else { return }
+                self.checkSessionStatus()
+            }
         }
         RunLoop.current.add(self.sessionTimer!, forMode: .common)
         self.checkSessionStatus()
@@ -941,27 +942,41 @@ class SessionManager {
             expiryRefreshTime = now
 
             for (profileName, session) in activeSessions {
-                Task { [weak self] in
-                    guard let self = self, !self.activeSessions.isEmpty else { return }
+                let cacheNameHint = session.cacheFileName ?? profileCacheFileMap[profileName]
+                let priorRoleExpiry = session.roleCredExpiryDate
+                Task.detached { [weak self] in
+                    guard let self = self else { return }
+                    if await self.activeSessions.isEmpty { return }
 
-                    var updatedRoleExpiry: Date? = session.roleCredExpiryDate
-                    if let cacheFilename = session.cacheFileName ?? self.profileCacheFileMap[profileName],
+                    var updatedRoleExpiry: Date? = priorRoleExpiry
+                    if let cacheFilename = cacheNameHint,
                        let token = try? await self.readCredentialsFromCacheFile(cacheFilename) {
                         updatedRoleExpiry = token.expiresAt
                     }
 
                     let updatedSSOExpiry = SSOTokenManager.shared.getSSOTokenExpiry(forProfile: profileName)
+                    // A token file without a refresh token can't silently renew —
+                    // treat the session as dead once its access token lapses.
+                    let hasRefresh = SSOTokenManager.shared.hasRefreshToken(forProfile: profileName)
+                    let ssoDead = !hasRefresh && (updatedSSOExpiry == nil || updatedSSOExpiry! <= Date())
 
                     await MainActor.run {
                         guard self.activeSessions[profileName] != nil else { return }
                         self.activeSessions[profileName]?.roleCredExpiryDate = updatedRoleExpiry
                         self.activeSessions[profileName]?.ssoTokenExpiryDate = updatedSSOExpiry
+                        if ssoDead {
+                            self.activeSessions[profileName]?.ssoSessionAlive = false
+                        }
                     }
                 }
             }
         }
 
-        // Health check: round-robin one profile per interval
+        // Health check: check every profile whose interval is due, not just one
+        // per tick. Per-profile rate limiting is preserved by lastHealthCheck +
+        // healthCheckInterval (each profile re-checks at most once per interval),
+        // so detection latency is ≤ healthCheckInterval regardless of how many
+        // profiles are active (previously up to N × interval with the round-robin).
         if !activeSessions.isEmpty {
             let profileNames = Array(activeSessions.keys).sorted()
             for profileName in profileNames {
@@ -970,8 +985,9 @@ class SessionManager {
                 if now.timeIntervalSince(sessionLastCheck) > healthCheckInterval {
                     activeSessions[profileName]?.lastHealthCheck = now
 
-                    Task { [weak self] in
-                        guard let self = self, !self.activeSessions.isEmpty else { return }
+                    Task.detached { [weak self] in
+                        guard let self = self else { return }
+                        if await self.activeSessions.isEmpty { return }
                         do {
                             _ = try await CommandRunner.shared.runCommand("aws", args: ["sts", "get-caller-identity", "--profile", profileName])
                         } catch {
@@ -981,6 +997,7 @@ class SessionManager {
                                 print("SessionManager: Health check failed for \(profileName): \(errorString)")
                                 await MainActor.run {
                                     if !self.activeSessions.isEmpty {
+                                        self.activeSessions[profileName]?.ssoSessionAlive = false
                                         self.activeSessions[profileName]?.status = .expired
                                         self.onSessionsUpdated?(self.activeSessions)
                                         NotificationCenter.default.post(
@@ -993,7 +1010,6 @@ class SessionManager {
                             }
                         }
                     }
-                    break // Only check one profile per tick to avoid rate limiting
                 }
             }
         }
@@ -1007,8 +1023,9 @@ class SessionManager {
                roleExpiry.timeIntervalSinceNow > 0,
                roleExpiry.timeIntervalSinceNow <= proactiveRefreshThreshold,
                session.status == .active {
-                Task { [weak self] in
-                    guard let self = self, !self.activeSessions.isEmpty else { return }
+                Task.detached { [weak self] in
+                    guard let self = self else { return }
+                    if await self.activeSessions.isEmpty { return }
                     _ = try? await CommandRunner.shared.runCommand("aws", args: ["sts", "get-caller-identity", "--profile", profileName])
                 }
                 break // One refresh per tick

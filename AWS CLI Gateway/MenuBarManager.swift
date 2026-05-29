@@ -312,6 +312,7 @@ struct ProfileDisplayInfo {
     var expiresAtLocal: String?
 }
 
+@MainActor
 class StatusBarViewModel: ObservableObject {
     @Published var connectedProfiles: [ProfileDisplayInfo] = []
     @Published var disconnectedProfiles: [ProfileDisplayInfo] = []
@@ -437,6 +438,7 @@ class StatusBarViewModel: ObservableObject {
 
 // MARK: - MenuBarManager
 
+@MainActor
 class MenuBarManager: NSObject {
     static let shared = MenuBarManager()
 
@@ -492,7 +494,7 @@ class MenuBarManager: NSObject {
 
             // Live session updates — only update time strings, not full rebuild
             SessionManager.shared.onSessionsUpdated = { [weak self] sessions in
-                DispatchQueue.main.async {
+                Task { @MainActor in
                     guard let self = self else { return }
                     var changed = false
                     for i in self.viewModel.connectedProfiles.indices {
@@ -514,7 +516,7 @@ class MenuBarManager: NSObject {
             }
 
             SessionManager.shared.onTokenExpirationWarning = { [weak self] profileName, timeUntilExpiry in
-                DispatchQueue.main.async {
+                Task { @MainActor in
                     self?.handleTokenExpirationWarning(profileName: profileName, timeUntilExpiry: timeUntilExpiry)
                 }
             }
@@ -567,46 +569,59 @@ class MenuBarManager: NSObject {
         isRestoringSessions = true
         defer { isRestoringSessions = false }
 
-        ProfileHistoryManager.shared.clearConnectedProfile()
-
-        let allProfiles = ConfigManager.shared.getProfiles()
+        // Only restore profiles the user actually connected via the app (persisted
+        // in profile_history.json), not every profile that happens to have a token
+        // on disk — a terminal `aws sso login` should NOT auto-appear as connected.
+        // Reconcile against disk: a previously-connected profile whose token is now
+        // gone gets marked disconnected.
+        let previouslyConnected = ProfileHistoryManager.shared.getConnectedProfiles()
         var restoredCount = 0
 
-        for profile in allProfiles {
-            guard restoredCount < ProfileHistoryManager.maxConcurrentProfiles else { break }
+        for info in previouslyConnected {
+            let profileName = info.originalName
 
-            let profileName = profile.name
-            var hasValidSession = false
-
-            let ssoExpiry = SSOTokenManager.shared.getSSOTokenExpiry(forProfile: profileName)
-            if let ssoExpiry = ssoExpiry, ssoExpiry > Date() {
-                hasValidSession = true
+            guard restoredCount < ProfileHistoryManager.maxConcurrentProfiles else {
+                ProfileHistoryManager.shared.setProfileDisconnected(profileName)
+                continue
             }
 
-            if !hasValidSession,
-               let sessionName = ConfigManager.shared.getSSOSessionName(for: profileName) {
-                let homeDir = FileManager.default.homeDirectoryForCurrentUser
-                let ssoCachePath = homeDir.appendingPathComponent(".aws/sso/cache")
-                let data = Data(sessionName.utf8)
-                var digest = [UInt8](repeating: 0, count: Int(CC_SHA1_DIGEST_LENGTH))
-                data.withUnsafeBytes { _ = CC_SHA1($0.baseAddress, CC_LONG(data.count), &digest) }
-                let hash = digest.map { String(format: "%02hhx", $0) }.joined()
-
-                let tokenFile = ssoCachePath.appendingPathComponent("\(hash).json")
-                if let fileData = try? Data(contentsOf: tokenFile),
-                   let json = try? JSONSerialization.jsonObject(with: fileData) as? [String: Any],
-                   json["refreshToken"] != nil {
-                    hasValidSession = true
-                }
-            }
-
-            if hasValidSession {
-                ProfileHistoryManager.shared.setConnectedProfile(profileName)
+            if hasValidSessionOnDisk(for: profileName) {
                 if activeProfile == nil { activeProfile = profileName }
                 SessionManager.shared.startMonitoring(for: profileName)
                 restoredCount += 1
+            } else {
+                // Token was logged out / expired while the app was closed.
+                ProfileHistoryManager.shared.setProfileDisconnected(profileName)
             }
         }
+    }
+
+    /// Whether a profile has a usable SSO session on disk: a non-expired access
+    /// token, or a token file that still carries a refresh token (renewable).
+    @MainActor
+    private func hasValidSessionOnDisk(for profileName: String) -> Bool {
+        if let ssoExpiry = SSOTokenManager.shared.getSSOTokenExpiry(forProfile: profileName),
+           ssoExpiry > Date() {
+            return true
+        }
+
+        guard let sessionName = ConfigManager.shared.getSSOSessionName(for: profileName) else {
+            return false
+        }
+        let homeDir = FileManager.default.homeDirectoryForCurrentUser
+        let ssoCachePath = homeDir.appendingPathComponent(".aws/sso/cache")
+        let data = Data(sessionName.utf8)
+        var digest = [UInt8](repeating: 0, count: Int(CC_SHA1_DIGEST_LENGTH))
+        data.withUnsafeBytes { _ = CC_SHA1($0.baseAddress, CC_LONG(data.count), &digest) }
+        let hash = digest.map { String(format: "%02hhx", $0) }.joined()
+
+        let tokenFile = ssoCachePath.appendingPathComponent("\(hash).json")
+        if let fileData = try? Data(contentsOf: tokenFile),
+           let json = try? JSONSerialization.jsonObject(with: fileData) as? [String: Any],
+           json["refreshToken"] != nil {
+            return true
+        }
+        return false
     }
 
     func hasActiveSession() -> Bool {

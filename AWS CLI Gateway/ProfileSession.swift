@@ -8,10 +8,21 @@ struct ProfileSession {
     var status: ProfileSessionStatus
     var cacheFileName: String?
 
+    /// Whether the underlying SSO session (refresh token) is still alive.
+    /// Set to false when a health check fails with an auth/expiry error so the
+    /// UI stops showing a green countdown for a session that can no longer renew.
+    var ssoSessionAlive: Bool = true
+
     /// Role credentials reflect the permission set duration (actual usable session).
     /// The SSO access token (60min) auto-refreshes via refresh token — don't use it
     /// as the countdown. Fall back to SSO token only if role creds aren't available.
+    ///
+    /// Returns nil once the SSO session is known to be dead (a health check failed
+    /// or the token has no refresh token), so the countdown zeroes and the status
+    /// goes expired instead of optimistically ticking down a session that can no
+    /// longer renew.
     var effectiveExpiry: Date? {
+        guard ssoSessionAlive else { return nil }
         if let role = roleCredExpiryDate {
             return role
         }
