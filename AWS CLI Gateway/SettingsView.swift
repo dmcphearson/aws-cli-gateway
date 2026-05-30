@@ -391,6 +391,7 @@ struct ToolsSection: View {
         }
     }
 
+    @MainActor
     private func clearCache() {
         do {
             let message = try ScriptManager.shared.clearAWSCache()
