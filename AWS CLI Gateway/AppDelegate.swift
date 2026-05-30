@@ -47,8 +47,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDele
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         if response.actionIdentifier == "refresh-action" {
+            let profileName = response.notification.request.content.userInfo["profileName"] as? String
             Task { @MainActor in
-                MenuBarManager.shared.refreshCurrentSession()
+                if let profileName = profileName {
+                    MenuBarManager.shared.refreshSession(for: profileName)
+                } else {
+                    MenuBarManager.shared.refreshCurrentSession()
+                }
             }
         }
         completionHandler()

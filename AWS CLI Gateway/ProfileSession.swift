@@ -13,6 +13,11 @@ struct ProfileSession {
     /// UI stops showing a green countdown for a session that can no longer renew.
     var ssoSessionAlive: Bool = true
 
+    /// The roleCredExpiryDate value we last ran a forced-refresh probe against.
+    /// Used to ensure the T-60min probe fires only once per credential window
+    /// rather than every timer tick during the final hour.
+    var probedCredExpiry: Date?
+
     /// Role credentials reflect the permission set duration (actual usable session).
     /// The SSO access token (60min) auto-refreshes via refresh token — don't use it
     /// as the countdown. Fall back to SSO token only if role creds aren't available.
@@ -46,13 +51,17 @@ struct ProfileSession {
 enum ProfileSessionStatus: Equatable {
     case connecting
     case active
+    /// Role credentials are still valid (countdown > 0) but the last forced
+    /// refresh failed — the SSO session can no longer auto-renew, so the user
+    /// must browser-reauth before the role creds expire. Shown as yellow.
+    case reauthRequired
     case expired
     case error(String)
 
     static func == (lhs: ProfileSessionStatus, rhs: ProfileSessionStatus) -> Bool {
         switch (lhs, rhs) {
         case (.connecting, .connecting), (.active, .active),
-             (.expired, .expired):
+             (.reauthRequired, .reauthRequired), (.expired, .expired):
             return true
         case let (.error(a), .error(b)):
             return a == b

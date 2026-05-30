@@ -172,16 +172,20 @@ struct ConnectedProfileRow: View {
 
                     HStack(spacing: 8) {
                         Spacer()
+                        // In the yellow reauth state, the refresh button becomes
+                        // a prominent "Sign In" — onFullRefresh already runs the
+                        // browser login + re-mint flow.
                         Button(action: onFullRefresh) {
                             HStack(spacing: 4) {
-                                Image(systemName: "arrow.clockwise")
+                                Image(systemName: profile.status == .reauthRequired ? "person.badge.key" : "arrow.clockwise")
                                     .font(.system(size: 10))
-                                Text("Full Refresh")
+                                Text(profile.status == .reauthRequired ? "Sign In" : "Full Refresh")
                                     .font(.system(size: 11))
                             }
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
+                        .tint(profile.status == .reauthRequired ? .yellow : nil)
 
                         Button(action: onDisconnect) {
                             HStack(spacing: 4) {
@@ -207,6 +211,7 @@ struct ConnectedProfileRow: View {
     private var statusColor: Color {
         switch profile.status {
         case .active: return .green
+        case .reauthRequired: return .yellow
         case .expired: return .red
         default: return .gray
         }
@@ -512,6 +517,12 @@ class MenuBarManager: NSObject {
                         self.viewModel.objectWillChange.send()
                     }
                     self.updateStatusIcon()
+
+                    // Notify (once, with cooldown) for any profile that just
+                    // entered the yellow reauth-required state.
+                    for (name, session) in sessions where session.status == .reauthRequired {
+                        self.handleReauthRequired(profileName: name)
+                    }
                 }
             }
 
@@ -643,8 +654,9 @@ class MenuBarManager: NSObject {
         guard let baseImage = NSImage(named: "cloud-lock") else { return }
 
         let sessions = SessionManager.shared.activeSessions
-        let hasActive = sessions.values.contains { $0.status == .active }
         let hasExpired = sessions.values.contains { $0.status == .expired }
+        let hasReauthRequired = sessions.values.contains { $0.status == .reauthRequired }
+        let hasActive = sessions.values.contains { $0.status == .active }
 
         button.image = baseImage
         button.image?.isTemplate = true
@@ -654,7 +666,17 @@ class MenuBarManager: NSObject {
 
         if sessions.isEmpty { return }
 
-        let dotColor: NSColor = hasActive ? .systemGreen : (hasExpired ? .systemRed : .systemGray)
+        // Priority: red (expired) > yellow (reauth needed) > green (active).
+        let dotColor: NSColor
+        if hasExpired {
+            dotColor = .systemRed
+        } else if hasReauthRequired {
+            dotColor = .systemYellow
+        } else if hasActive {
+            dotColor = .systemGreen
+        } else {
+            dotColor = .systemGray
+        }
         let dotDiameter: CGFloat = 6
 
         let dot = NSView(frame: NSRect(
@@ -762,12 +784,20 @@ class MenuBarManager: NSObject {
 
     func refreshCurrentSession() {
         guard let activeProfile = self.activeProfile else { return }
+        refreshSession(for: activeProfile)
+    }
+
+    /// Reauths a specific profile (used by the per-profile notification action
+    /// and the yellow-state "Sign In" button). refreshSSOSession tries a silent
+    /// refresh first and falls back to the browser login when the refresh token
+    /// is dead, then restarts monitoring on success.
+    func refreshSession(for profileName: String) {
         Task {
-            let success = await SessionManager.shared.refreshSSOSession(for: activeProfile)
+            let success = await SessionManager.shared.refreshSSOSession(for: profileName)
             if !success {
                 await MainActor.run {
                     showError("Session Refresh Failed",
-                             message: "Unable to refresh your SSO session automatically. Please run 'aws sso login --profile \(activeProfile)' in Terminal.")
+                             message: "Unable to refresh your SSO session automatically. Please run 'aws sso login --profile \(profileName)' in Terminal.")
                 }
             }
         }
@@ -835,6 +865,36 @@ class MenuBarManager: NSObject {
         default:
             break
         }
+    }
+
+    /// Fires once (per cooldown) when a profile enters the yellow reauth state:
+    /// role creds are still valid but the SSO refresh token can no longer renew
+    /// them, so the user should sign in again before the creds run out.
+    private func handleReauthRequired(profileName: String) {
+        let key = "\(profileName)-reauth"
+        if let lastSent = lastNotificationSent[key],
+           Date().timeIntervalSince(lastSent) < notificationCooldown {
+            return
+        }
+        lastNotificationSent[key] = Date()
+        showReauthRequiredNotification(profileName: profileName)
+    }
+
+    private func showReauthRequiredNotification(profileName: String) {
+        let content = UNMutableNotificationContent()
+        content.title = "AWS CLI Gateway"
+        content.body = "AWS session for '\(profileName)' can't auto-renew — sign in again within the hour to stay connected."
+        content.sound = .default
+
+        let signInAction = UNNotificationAction(identifier: "refresh-action", title: "Sign In", options: [.foreground])
+        let remindLaterAction = UNNotificationAction(identifier: "remind-later-action", title: "Remind Later", options: [])
+        let category = UNNotificationCategory(identifier: "token-expiring", actions: [signInAction, remindLaterAction], intentIdentifiers: [])
+        UNUserNotificationCenter.current().setNotificationCategories([category])
+        content.categoryIdentifier = "token-expiring"
+        content.userInfo = ["profileName": profileName]
+
+        let request = UNNotificationRequest(identifier: "token-reauth-\(profileName)", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { _ in }
     }
 
     private func showTokenExpiredNotification(profileName: String) {
