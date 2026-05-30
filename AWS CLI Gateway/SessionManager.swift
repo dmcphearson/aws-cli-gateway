@@ -620,6 +620,59 @@ class SessionManager {
         }
     }
 
+    /// Forces a role-credential mint to test whether the SSO refresh token is
+    /// still valid. This is the only authoritative liveness test: it clears the
+    /// cached role creds so the AWS CLI is forced to mint fresh ones via the
+    /// refresh token. To avoid destroying the user's still-valid creds when the
+    /// refresh token is dead, the cache file is backed up first and restored on
+    /// failure. Returns true if a fresh mint succeeded (session healthy).
+    private nonisolated func probeRefresh(profileName: String, cacheFileName: String?) async -> Bool {
+        let homeDir = FileManager.default.homeDirectoryForCurrentUser
+        let cliCachePath = homeDir.appendingPathComponent(".aws/cli/cache")
+
+        // Resolve the role-cred cache file for this profile.
+        let resolvedName = cacheFileName ?? profileCacheFileMap[profileName]
+        guard let resolvedName = resolvedName else {
+            // No known cache file — fall back to a plain mint attempt. Success
+            // means creds are obtainable; failure means reauth is needed.
+            do {
+                _ = try await CommandRunner.shared.runCommand("aws", args: ["sts", "get-caller-identity", "--profile", profileName])
+                return true
+            } catch {
+                return false
+            }
+        }
+
+        let cacheFile = cliCachePath.appendingPathComponent(resolvedName)
+        let backupFile = cliCachePath.appendingPathComponent("\(resolvedName).probe-backup")
+
+        let fm = FileManager.default
+        let hadCacheFile = fm.fileExists(atPath: cacheFile.path)
+
+        // Back up, then remove the cache file so botocore must re-mint.
+        if hadCacheFile {
+            try? fm.removeItem(at: backupFile)               // clear any stale backup
+            try? fm.copyItem(at: cacheFile, to: backupFile)
+            try? fm.removeItem(at: cacheFile)
+        }
+
+        do {
+            _ = try await CommandRunner.shared.runCommand("aws", args: ["sts", "get-caller-identity", "--profile", profileName])
+            // Success: fresh creds are in the cache now. Drop the backup.
+            try? fm.removeItem(at: backupFile)
+            return true
+        } catch {
+            // Failure: restore the user's still-valid creds so they keep the
+            // remaining time behind the yellow indicator.
+            if hadCacheFile {
+                try? fm.removeItem(at: cacheFile)            // remove any partial file
+                try? fm.copyItem(at: backupFile, to: cacheFile)
+                try? fm.removeItem(at: backupFile)
+            }
+            return false
+        }
+    }
+
 
     private nonisolated func findCLICredentialsForProfile(_ profileName: String) async throws -> SSOToken? {
 
@@ -1014,37 +1067,82 @@ class SessionManager {
             }
         }
 
-        // Proactive credential refresh: when role creds are within 15 min of expiry,
-        // run sts get-caller-identity to force the CLI to refresh them in the cache.
-        // This keeps ~/.aws/cli/cache/ fresh for non-CLI tools (Terraform, SDKs, etc.)
-        let proactiveRefreshThreshold: TimeInterval = 15 * 60
+        // Proactive refresh-token probe: when role creds drop within 60 min of
+        // expiry, force a real mint (clear cache + sts get-caller-identity) to
+        // test whether the refresh token still works. On success the user gets a
+        // fresh ~12h window silently; on failure we mark the profile yellow
+        // (.reauthRequired) while they keep the remaining valid creds and an
+        // hour of warning. Probe once per credential window (probedCredExpiry).
+        let probeThreshold: TimeInterval = 60 * 60
         for (profileName, session) in activeSessions {
             if let roleExpiry = session.roleCredExpiryDate,
                roleExpiry.timeIntervalSinceNow > 0,
-               roleExpiry.timeIntervalSinceNow <= proactiveRefreshThreshold,
-               session.status == .active {
+               roleExpiry.timeIntervalSinceNow <= probeThreshold,
+               session.status == .active,
+               session.probedCredExpiry != roleExpiry {
+                // Mark immediately so we don't re-probe every tick this window.
+                activeSessions[profileName]?.probedCredExpiry = roleExpiry
+                let cacheName = session.cacheFileName
                 Task.detached { [weak self] in
                     guard let self = self else { return }
                     if await self.activeSessions.isEmpty { return }
-                    _ = try? await CommandRunner.shared.runCommand("aws", args: ["sts", "get-caller-identity", "--profile", profileName])
+                    let ok = await self.probeRefresh(profileName: profileName, cacheFileName: cacheName)
+                    if ok {
+                        // Fresh creds minted — re-read the new ~12h expiry.
+                        let newName = cacheName ?? self.profileCacheFileMap[profileName]
+                        let newExpiry = (newName != nil)
+                            ? (try? await self.readCredentialsFromCacheFile(newName!))?.expiresAt
+                            : nil
+                        await MainActor.run {
+                            guard self.activeSessions[profileName] != nil else { return }
+                            if let newExpiry = newExpiry {
+                                self.activeSessions[profileName]?.roleCredExpiryDate = newExpiry
+                            }
+                            self.activeSessions[profileName]?.ssoSessionAlive = true
+                            self.activeSessions[profileName]?.status = .active
+                            self.activeSessions[profileName]?.probedCredExpiry = nil
+                            self.onSessionsUpdated?(self.activeSessions)
+                        }
+                    } else {
+                        // Refresh token is dead — yellow until the user reauths.
+                        await MainActor.run {
+                            guard self.activeSessions[profileName] != nil else { return }
+                            self.activeSessions[profileName]?.ssoSessionAlive = false
+                            self.activeSessions[profileName]?.status = .reauthRequired
+                            self.onSessionsUpdated?(self.activeSessions)
+                        }
+                    }
                 }
-                break // One refresh per tick
+                break // One probe per tick
             }
         }
 
         // Update status for all active sessions
         var anyExpired = false
         for (profileName, session) in activeSessions {
-            guard let expiry = session.effectiveExpiry else {
-                activeSessions[profileName]?.status = .expired
-                anyExpired = true
-                continue
-            }
-            let remaining = expiry.timeIntervalSinceNow
-            if remaining <= 0 {
-                activeSessions[profileName]?.status = .expired
-                anyExpired = true
+            let willExpire: Bool
+            if let expiry = session.effectiveExpiry {
+                willExpire = expiry.timeIntervalSinceNow <= 0
             } else {
+                willExpire = true
+            }
+
+            if willExpire {
+                // If the profile was yellow (failed probe) and has now run out
+                // the clock, escalate to the reauth notification so the user
+                // gets the one-click sign-in prompt.
+                if session.status == .reauthRequired {
+                    NotificationCenter.default.post(
+                        name: Notification.Name(Constants.Notifications.sessionExpired),
+                        object: nil,
+                        userInfo: [Constants.NotificationKeys.profileName: profileName]
+                    )
+                }
+                activeSessions[profileName]?.status = .expired
+                anyExpired = true
+            } else if session.status != .reauthRequired {
+                // Preserve a yellow (failed-probe) state until creds actually
+                // expire; otherwise a still-valid countdown reads as active.
                 activeSessions[profileName]?.status = .active
             }
         }
