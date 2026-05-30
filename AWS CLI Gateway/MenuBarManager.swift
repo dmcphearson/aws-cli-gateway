@@ -172,16 +172,20 @@ struct ConnectedProfileRow: View {
 
                     HStack(spacing: 8) {
                         Spacer()
+                        // In the yellow reauth state, the refresh button becomes
+                        // a prominent "Sign In" — onFullRefresh already runs the
+                        // browser login + re-mint flow.
                         Button(action: onFullRefresh) {
                             HStack(spacing: 4) {
-                                Image(systemName: "arrow.clockwise")
+                                Image(systemName: profile.status == .reauthRequired ? "person.badge.key" : "arrow.clockwise")
                                     .font(.system(size: 10))
-                                Text("Full Refresh")
+                                Text(profile.status == .reauthRequired ? "Sign In" : "Full Refresh")
                                     .font(.system(size: 11))
                             }
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
+                        .tint(profile.status == .reauthRequired ? .yellow : nil)
 
                         Button(action: onDisconnect) {
                             HStack(spacing: 4) {
@@ -207,6 +211,7 @@ struct ConnectedProfileRow: View {
     private var statusColor: Color {
         switch profile.status {
         case .active: return .green
+        case .reauthRequired: return .yellow
         case .expired: return .red
         default: return .gray
         }
@@ -312,6 +317,7 @@ struct ProfileDisplayInfo {
     var expiresAtLocal: String?
 }
 
+@MainActor
 class StatusBarViewModel: ObservableObject {
     @Published var connectedProfiles: [ProfileDisplayInfo] = []
     @Published var disconnectedProfiles: [ProfileDisplayInfo] = []
@@ -437,6 +443,7 @@ class StatusBarViewModel: ObservableObject {
 
 // MARK: - MenuBarManager
 
+@MainActor
 class MenuBarManager: NSObject {
     static let shared = MenuBarManager()
 
@@ -492,7 +499,7 @@ class MenuBarManager: NSObject {
 
             // Live session updates — only update time strings, not full rebuild
             SessionManager.shared.onSessionsUpdated = { [weak self] sessions in
-                DispatchQueue.main.async {
+                Task { @MainActor in
                     guard let self = self else { return }
                     var changed = false
                     for i in self.viewModel.connectedProfiles.indices {
@@ -510,11 +517,17 @@ class MenuBarManager: NSObject {
                         self.viewModel.objectWillChange.send()
                     }
                     self.updateStatusIcon()
+
+                    // Notify (once, with cooldown) for any profile that just
+                    // entered the yellow reauth-required state.
+                    for (name, session) in sessions where session.status == .reauthRequired {
+                        self.handleReauthRequired(profileName: name)
+                    }
                 }
             }
 
             SessionManager.shared.onTokenExpirationWarning = { [weak self] profileName, timeUntilExpiry in
-                DispatchQueue.main.async {
+                Task { @MainActor in
                     self?.handleTokenExpirationWarning(profileName: profileName, timeUntilExpiry: timeUntilExpiry)
                 }
             }
@@ -567,46 +580,59 @@ class MenuBarManager: NSObject {
         isRestoringSessions = true
         defer { isRestoringSessions = false }
 
-        ProfileHistoryManager.shared.clearConnectedProfile()
-
-        let allProfiles = ConfigManager.shared.getProfiles()
+        // Only restore profiles the user actually connected via the app (persisted
+        // in profile_history.json), not every profile that happens to have a token
+        // on disk — a terminal `aws sso login` should NOT auto-appear as connected.
+        // Reconcile against disk: a previously-connected profile whose token is now
+        // gone gets marked disconnected.
+        let previouslyConnected = ProfileHistoryManager.shared.getConnectedProfiles()
         var restoredCount = 0
 
-        for profile in allProfiles {
-            guard restoredCount < ProfileHistoryManager.maxConcurrentProfiles else { break }
+        for info in previouslyConnected {
+            let profileName = info.originalName
 
-            let profileName = profile.name
-            var hasValidSession = false
-
-            let ssoExpiry = SSOTokenManager.shared.getSSOTokenExpiry(forProfile: profileName)
-            if let ssoExpiry = ssoExpiry, ssoExpiry > Date() {
-                hasValidSession = true
+            guard restoredCount < ProfileHistoryManager.maxConcurrentProfiles else {
+                ProfileHistoryManager.shared.setProfileDisconnected(profileName)
+                continue
             }
 
-            if !hasValidSession,
-               let sessionName = ConfigManager.shared.getSSOSessionName(for: profileName) {
-                let homeDir = FileManager.default.homeDirectoryForCurrentUser
-                let ssoCachePath = homeDir.appendingPathComponent(".aws/sso/cache")
-                let data = Data(sessionName.utf8)
-                var digest = [UInt8](repeating: 0, count: Int(CC_SHA1_DIGEST_LENGTH))
-                data.withUnsafeBytes { _ = CC_SHA1($0.baseAddress, CC_LONG(data.count), &digest) }
-                let hash = digest.map { String(format: "%02hhx", $0) }.joined()
-
-                let tokenFile = ssoCachePath.appendingPathComponent("\(hash).json")
-                if let fileData = try? Data(contentsOf: tokenFile),
-                   let json = try? JSONSerialization.jsonObject(with: fileData) as? [String: Any],
-                   json["refreshToken"] != nil {
-                    hasValidSession = true
-                }
-            }
-
-            if hasValidSession {
-                ProfileHistoryManager.shared.setConnectedProfile(profileName)
+            if hasValidSessionOnDisk(for: profileName) {
                 if activeProfile == nil { activeProfile = profileName }
                 SessionManager.shared.startMonitoring(for: profileName)
                 restoredCount += 1
+            } else {
+                // Token was logged out / expired while the app was closed.
+                ProfileHistoryManager.shared.setProfileDisconnected(profileName)
             }
         }
+    }
+
+    /// Whether a profile has a usable SSO session on disk: a non-expired access
+    /// token, or a token file that still carries a refresh token (renewable).
+    @MainActor
+    private func hasValidSessionOnDisk(for profileName: String) -> Bool {
+        if let ssoExpiry = SSOTokenManager.shared.getSSOTokenExpiry(forProfile: profileName),
+           ssoExpiry > Date() {
+            return true
+        }
+
+        guard let sessionName = ConfigManager.shared.getSSOSessionName(for: profileName) else {
+            return false
+        }
+        let homeDir = FileManager.default.homeDirectoryForCurrentUser
+        let ssoCachePath = homeDir.appendingPathComponent(".aws/sso/cache")
+        let data = Data(sessionName.utf8)
+        var digest = [UInt8](repeating: 0, count: Int(CC_SHA1_DIGEST_LENGTH))
+        data.withUnsafeBytes { _ = CC_SHA1($0.baseAddress, CC_LONG(data.count), &digest) }
+        let hash = digest.map { String(format: "%02hhx", $0) }.joined()
+
+        let tokenFile = ssoCachePath.appendingPathComponent("\(hash).json")
+        if let fileData = try? Data(contentsOf: tokenFile),
+           let json = try? JSONSerialization.jsonObject(with: fileData) as? [String: Any],
+           json["refreshToken"] != nil {
+            return true
+        }
+        return false
     }
 
     func hasActiveSession() -> Bool {
@@ -628,8 +654,9 @@ class MenuBarManager: NSObject {
         guard let baseImage = NSImage(named: "cloud-lock") else { return }
 
         let sessions = SessionManager.shared.activeSessions
-        let hasActive = sessions.values.contains { $0.status == .active }
         let hasExpired = sessions.values.contains { $0.status == .expired }
+        let hasReauthRequired = sessions.values.contains { $0.status == .reauthRequired }
+        let hasActive = sessions.values.contains { $0.status == .active }
 
         button.image = baseImage
         button.image?.isTemplate = true
@@ -639,7 +666,17 @@ class MenuBarManager: NSObject {
 
         if sessions.isEmpty { return }
 
-        let dotColor: NSColor = hasActive ? .systemGreen : (hasExpired ? .systemRed : .systemGray)
+        // Priority: red (expired) > yellow (reauth needed) > green (active).
+        let dotColor: NSColor
+        if hasExpired {
+            dotColor = .systemRed
+        } else if hasReauthRequired {
+            dotColor = .systemYellow
+        } else if hasActive {
+            dotColor = .systemGreen
+        } else {
+            dotColor = .systemGray
+        }
         let dotDiameter: CGFloat = 6
 
         let dot = NSView(frame: NSRect(
@@ -747,12 +784,20 @@ class MenuBarManager: NSObject {
 
     func refreshCurrentSession() {
         guard let activeProfile = self.activeProfile else { return }
+        refreshSession(for: activeProfile)
+    }
+
+    /// Reauths a specific profile (used by the per-profile notification action
+    /// and the yellow-state "Sign In" button). refreshSSOSession tries a silent
+    /// refresh first and falls back to the browser login when the refresh token
+    /// is dead, then restarts monitoring on success.
+    func refreshSession(for profileName: String) {
         Task {
-            let success = await SessionManager.shared.refreshSSOSession(for: activeProfile)
+            let success = await SessionManager.shared.refreshSSOSession(for: profileName)
             if !success {
                 await MainActor.run {
                     showError("Session Refresh Failed",
-                             message: "Unable to refresh your SSO session automatically. Please run 'aws sso login --profile \(activeProfile)' in Terminal.")
+                             message: "Unable to refresh your SSO session automatically. Please run 'aws sso login --profile \(profileName)' in Terminal.")
                 }
             }
         }
@@ -820,6 +865,36 @@ class MenuBarManager: NSObject {
         default:
             break
         }
+    }
+
+    /// Fires once (per cooldown) when a profile enters the yellow reauth state:
+    /// role creds are still valid but the SSO refresh token can no longer renew
+    /// them, so the user should sign in again before the creds run out.
+    private func handleReauthRequired(profileName: String) {
+        let key = "\(profileName)-reauth"
+        if let lastSent = lastNotificationSent[key],
+           Date().timeIntervalSince(lastSent) < notificationCooldown {
+            return
+        }
+        lastNotificationSent[key] = Date()
+        showReauthRequiredNotification(profileName: profileName)
+    }
+
+    private func showReauthRequiredNotification(profileName: String) {
+        let content = UNMutableNotificationContent()
+        content.title = "AWS CLI Gateway"
+        content.body = "AWS session for '\(profileName)' can't auto-renew — sign in again within the hour to stay connected."
+        content.sound = .default
+
+        let signInAction = UNNotificationAction(identifier: "refresh-action", title: "Sign In", options: [.foreground])
+        let remindLaterAction = UNNotificationAction(identifier: "remind-later-action", title: "Remind Later", options: [])
+        let category = UNNotificationCategory(identifier: "token-expiring", actions: [signInAction, remindLaterAction], intentIdentifiers: [])
+        UNUserNotificationCenter.current().setNotificationCategories([category])
+        content.categoryIdentifier = "token-expiring"
+        content.userInfo = ["profileName": profileName]
+
+        let request = UNNotificationRequest(identifier: "token-reauth-\(profileName)", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { _ in }
     }
 
     private func showTokenExpiredNotification(profileName: String) {

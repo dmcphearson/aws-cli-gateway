@@ -146,6 +146,19 @@ class SSOTokenManager {
         return Self.parseISO8601(expiresAtString)
     }
 
+    /// Whether the SSO session for this profile can still silently renew.
+    /// A token file with a `refreshToken` can refresh the ~60min access token
+    /// in the background; without one, `expiresAt` is a hard ceiling and the
+    /// session is effectively dead once the access token lapses.
+    func hasRefreshToken(forProfile profileName: String) -> Bool {
+        guard let tokenFilePath = findTokenFile(forProfile: profileName),
+              let tokenData = try? Data(contentsOf: tokenFilePath),
+              let tokenDict = try? JSONSerialization.jsonObject(with: tokenData) as? [String: Any] else {
+            return false
+        }
+        return tokenDict["refreshToken"] != nil
+    }
+
     private func getTokenInfoFromSSOCache(startUrl: String, region: String) -> TokenInfo? {
         guard let tokenFilePath = findTokenFileByContent(startUrl: startUrl, region: region),
               let tokenData = try? Data(contentsOf: tokenFilePath),

@@ -1,5 +1,15 @@
 # Release Notes
 
+## Version 1.0.2
+
+- Fixed a session-monitoring crash caused by a data race on shared session state
+- More accurate session tracking: only profiles connected through the app are restored on launch; terminal-only `aws sso login` no longer shows up as connected
+- Faster detection of dead sessions (health-checks every due profile each tick instead of round-robin)
+- Proactive refresh-token probe: when role credentials near expiry, the app silently mints a fresh window if the SSO refresh token is still valid
+- New yellow "reauth required" state with one-click Sign In when the refresh token has expired, so a still-valid final hour of credentials is never destroyed
+
+---
+
 ## Version 1.0.1
 
 - Added status indicator dot on menu bar icon (green = active session, red = expired)
