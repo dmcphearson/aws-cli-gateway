@@ -123,4 +123,4 @@ Contributions are welcome. Please open an issue or pull request.
 
 ## License
 
-See [LICENSE](LICENSE) for details.
+Licensed under the [Apache License 2.0](LICENSE). If you redistribute it, include the [NOTICE](NOTICE) file. AWS is a trademark of Amazon.com, Inc. or its affiliates; this project is not affiliated with or endorsed by Amazon.
